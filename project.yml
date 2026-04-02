@@ -25,8 +25,8 @@ targets:
       properties:
         LSUIElement: true
         CFBundleDisplayName: CCBot
-        CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "2"
+        CFBundleShortVersionString: "1.0.2"
+        CFBundleVersion: "3"
   CCBotTests:
     type: bundle.unit-test
     platform: macOS
