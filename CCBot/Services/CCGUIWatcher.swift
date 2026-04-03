@@ -20,7 +20,15 @@ private final class DirectoryMonitor: @unchecked Sendable {
     private let dir: String
     private let seenLock = NSLock()
     private var seenFiles: Set<String>
+    /// Permission requests awaiting notification — cancelled if a response file appears.
+    private var pendingNotifications: [String: PermissionRequestInfo] = [:]
     let onNewRequests: @Sendable ([PermissionRequestInfo]) -> Void
+
+    /// Grace period before firing a notification. Gives CC GUI time to
+    /// auto-approve and produce a response file that we can detect.
+    /// Java PermissionRequestWatcher polls every 500ms; auto-approved
+    /// responses appear within ~600ms and are consumed by Node.js ~100ms later.
+    private static let autoApproveGracePeriod: TimeInterval = 1.5
 
     init(dir: String, initialFiles: Set<String>, onNewRequests: @escaping @Sendable ([PermissionRequestInfo]) -> Void) {
         self.dir = dir
@@ -31,19 +39,33 @@ private final class DirectoryMonitor: @unchecked Sendable {
     func scan() {
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
 
-        var newRequests: [PermissionRequestInfo] = []
+        var immediateNotifications: [PermissionRequestInfo] = []
 
         seenLock.lock()
         for file in files {
             guard !seenFiles.contains(file) else { continue }
             seenFiles.insert(file)
 
-            let isRequest = file.hasSuffix(".json") && (
-                file.hasPrefix("request-") ||
-                (file.hasPrefix("ask-user-question-") && !file.contains("-response-")) ||
-                (file.hasPrefix("plan-approval-") && !file.contains("-response-"))
-            )
-            guard isRequest else { continue }
+            guard file.hasSuffix(".json") else { continue }
+
+            // Detect response files → cancel matching pending notification.
+            // Auto-approved requests produce a response-*.json very quickly;
+            // kqueue fires when it's created, and this scan catches it before
+            // Node.js consumes it (~100ms window).
+            if file.hasPrefix("response-") {
+                let requestFile = "request-" + file.dropFirst("response-".count)
+                if pendingNotifications.removeValue(forKey: requestFile) != nil {
+                    log.debug("Auto-approved (response detected), skipping notification: \(requestFile)")
+                }
+                continue
+            }
+
+            // Detect request files
+            let isAskQuestion = file.hasPrefix("ask-user-question-") && !file.contains("-response-")
+            let isPlanApproval = file.hasPrefix("plan-approval-") && !file.contains("-response-")
+            let isPermissionRequest = file.hasPrefix("request-")
+
+            guard isAskQuestion || isPlanApproval || isPermissionRequest else { continue }
 
             let path = (dir as NSString).appendingPathComponent(file)
             guard let data = FileManager.default.contents(atPath: path),
@@ -53,16 +75,35 @@ private final class DirectoryMonitor: @unchecked Sendable {
             let toolName = json["toolName"] as? String ?? "unknown"
             let cwd = json["cwd"] as? String ?? ""
             let project = cwd.split(separator: "/").last.map(String.init) ?? "unknown"
+            let info = PermissionRequestInfo(toolName: toolName, project: project, file: file)
 
-            log.notice("CC GUI permission request: \(toolName) in \(project)")
-            newRequests.append(PermissionRequestInfo(toolName: toolName, project: project, file: file))
+            log.notice("CC GUI permission request detected: \(toolName) in \(project)")
+
+            if isAskQuestion || isPlanApproval {
+                // These always require user interaction — notify immediately
+                immediateNotifications.append(info)
+            } else {
+                // Permission requests might be auto-approved. Defer notification;
+                // if a response-*.json appears before the grace period expires
+                // (detected in a subsequent scan), the notification is cancelled.
+                pendingNotifications[file] = info
+                let callback = self.onNewRequests
+                DispatchQueue.global().asyncAfter(deadline: .now() + Self.autoApproveGracePeriod) { [self] in
+                    seenLock.lock()
+                    let pending = pendingNotifications.removeValue(forKey: file)
+                    seenLock.unlock()
+                    if let pending {
+                        callback([pending])
+                    }
+                }
+            }
         }
         // Prune: remove entries for files that no longer exist
         seenFiles = seenFiles.filter { files.contains($0) }
         seenLock.unlock()
 
-        if !newRequests.isEmpty {
-            onNewRequests(newRequests)
+        if !immediateNotifications.isEmpty {
+            onNewRequests(immediateNotifications)
         }
     }
 }
