@@ -17,6 +17,7 @@
 		B2AD79F0C3508328DE9EB862 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AD356A59EC4E0670EC110289 /* Assets.xcassets */; };
 		BDA16936045ED0C2F92726D9 /* HookInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB316C35F51F5510D97600A1 /* HookInstaller.swift */; };
 		C5E4649F8F1EA8CC8348962D /* CCGUIWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB542F27C2BC4323F42EF32E /* CCGUIWatcher.swift */; };
+		D58F0BF0491693B6688F99A7 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCF32A158EB479B567D56BA8 /* UpdateChecker.swift */; };
 		EB1BEA9FB863DAA0C5056F16 /* ACPProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACE47BC88A8AA2B2EC3F016 /* ACPProxy.swift */; };
 		EB84B0894B894D2E31BDB057 /* HookInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A5F6AD5A9133F427792E8D1 /* HookInstallerTests.swift */; };
 		F716F326490FF7B2E6A2E1EE /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB2A78A71A901104A051FB84 /* MenuBarView.swift */; };
@@ -50,6 +51,7 @@
 		C2C49D80B14393D726AF6351 /* CCBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CCBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C8E25B4511CE8B72819DDE0D /* SystemNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNotifier.swift; sourceTree = "<group>"; };
 		CB316C35F51F5510D97600A1 /* HookInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookInstaller.swift; sourceTree = "<group>"; };
+		CCF32A158EB479B567D56BA8 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -102,6 +104,7 @@
 				700209C23AABF3CA3E6257A9 /* HookServer.swift */,
 				C8E25B4511CE8B72819DDE0D /* SystemNotifier.swift */,
 				68AA225AC4728D71C5A6EF4C /* TelegramBot.swift */,
+				CCF32A158EB479B567D56BA8 /* UpdateChecker.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -226,6 +229,7 @@
 				05C7817C1BA6837AA094DB0F /* StringUtils.swift in Sources */,
 				565A6699E9A791277BB49991 /* SystemNotifier.swift in Sources */,
 				97E0F704EA9F85645F652B4A /* TelegramBot.swift in Sources */,
+				D58F0BF0491693B6688F99A7 /* UpdateChecker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -372,7 +376,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -429,7 +433,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

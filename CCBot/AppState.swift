@@ -8,6 +8,7 @@ final class AppState: ObservableObject {
     let hookServer = HookServer()
     let telegramBot = TelegramBot()
     let ccguiWatcher = CCGUIWatcher()
+    let updateChecker = UpdateChecker()
 
     private var started = false
 

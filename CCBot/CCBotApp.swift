@@ -17,7 +17,8 @@ struct CCBotApp: App {
             MenuBarView(
                 hookServer: appState.hookServer,
                 telegramBot: appState.telegramBot,
-                ccguiWatcher: appState.ccguiWatcher
+                ccguiWatcher: appState.ccguiWatcher,
+                updateChecker: appState.updateChecker
             )
         } label: {
             menuBarLabel

@@ -5,6 +5,7 @@ struct MenuBarView: View {
     @ObservedObject var hookServer: HookServer
     @ObservedObject var telegramBot: TelegramBot
     @ObservedObject var ccguiWatcher: CCGUIWatcher
+    @ObservedObject var updateChecker: UpdateChecker
 
     @AppStorage("telegramBotToken") private var token = ""
     @AppStorage("telegramChatId") private var chatId = ""
@@ -36,11 +37,22 @@ struct MenuBarView: View {
 
             // 版本 & 获取更新 & 退出
             HStack {
-                Link("获取更新 ↗", destination: URL(string: "https://github.com/sunkz/cc-bot")!)
+                Link("获取更新 ↗", destination: URL(string: "https://github.com/sunkz/cc-bot/releases")!)
                     .font(.callout)
-                Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
+                if updateChecker.hasUpdate, let latest = updateChecker.latestVersion {
+                    HStack(spacing: 3) {
+                        Text("v\(updateChecker.currentVersion)")
+                            .strikethrough()
+                            .foregroundStyle(.tertiary)
+                        Text("v\(latest)")
+                            .foregroundColor(.orange)
+                    }
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                } else {
+                    Text("v\(updateChecker.currentVersion)")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
                 Spacer()
                 Button("退出") {
                     NSApplication.shared.terminate(nil)
@@ -50,9 +62,10 @@ struct MenuBarView: View {
         }
         .padding(14)
         .frame(width: 260)
-        .onAppear {
+        .task {
             hookInstalled = HookInstaller.isInstalled()
             acpProxyInstalled = ACPProxy.isInstalled()
+            await updateChecker.check()
         }
         .alert("CCBot", isPresented: .init(
             get: { alertMessage != nil },
@@ -99,15 +112,13 @@ struct MenuBarView: View {
                     .labelsHidden()
             }
 
-            if telegramNotifyEnabled {
-                VStack(spacing: 6) {
-                    SecureField("Bot Token", text: $token)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.small)
-                    TextField("Chat ID", text: $chatId)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.small)
-                }
+            VStack(spacing: 6) {
+                SecureField("Bot Token", text: $token)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                TextField("Chat ID", text: $chatId)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
             }
         }
     }
@@ -149,7 +160,7 @@ struct MenuBarView: View {
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .labelsHidden()
-                    .onChange(of: ccguiWatcherEnabled) { _, enabled in
+                    .onChange(of: ccguiWatcherEnabled) { enabled in
                         toggleCCGUIWatcher(enabled: enabled)
                     }
             }

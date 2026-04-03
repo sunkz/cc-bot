@@ -16,6 +16,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
+
       - name: Detect signing configuration
         id: signing_config
         env:
@@ -99,6 +102,17 @@ jobs:
 
           APP_PATH="$DERIVED_DATA/Build/Products/Release/CCBot.app"
           lipo -archs "$APP_PATH/Contents/MacOS/CCBot"
+
+          EXPECTED_MIN_OS=$(/usr/bin/ruby -e 'require "yaml"; puts YAML.load_file("project.yml").dig("options", "deploymentTarget", "macOS")')
+          ACTUAL_MIN_OS=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$APP_PATH/Contents/Info.plist")
+
+          echo "Expected minimum macOS: $EXPECTED_MIN_OS"
+          echo "Built app minimum macOS: $ACTUAL_MIN_OS"
+
+          if [ "$EXPECTED_MIN_OS" != "$ACTUAL_MIN_OS" ]; then
+            echo "Built app minimum macOS version does not match project.yml" >&2
+            exit 1
+          fi
 
           if [ "$SIGNING_ENABLED" = "true" ]; then
             codesign --verify --deep --strict --verbose=2 "$APP_PATH"
