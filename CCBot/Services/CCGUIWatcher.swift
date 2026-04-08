@@ -40,6 +40,7 @@ private final class DirectoryMonitor: @unchecked Sendable {
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
 
         var immediateNotifications: [PermissionRequestInfo] = []
+        var deferredRequests: [(String, PermissionRequestInfo)] = []
 
         seenLock.lock()
         for file in files {
@@ -48,10 +49,6 @@ private final class DirectoryMonitor: @unchecked Sendable {
 
             guard file.hasSuffix(".json") else { continue }
 
-            // Detect response files → cancel matching pending notification.
-            // Auto-approved requests produce a response-*.json very quickly;
-            // kqueue fires when it's created, and this scan catches it before
-            // Node.js consumes it (~100ms window).
             if file.hasPrefix("response-") {
                 let requestFile = "request-" + file.dropFirst("response-".count)
                 if pendingNotifications.removeValue(forKey: requestFile) != nil {
@@ -60,7 +57,6 @@ private final class DirectoryMonitor: @unchecked Sendable {
                 continue
             }
 
-            // Detect request files
             let isAskQuestion = file.hasPrefix("ask-user-question-") && !file.contains("-response-")
             let isPlanApproval = file.hasPrefix("plan-approval-") && !file.contains("-response-")
             let isPermissionRequest = file.hasPrefix("request-")
@@ -80,27 +76,27 @@ private final class DirectoryMonitor: @unchecked Sendable {
             log.notice("CC GUI permission request detected: \(toolName) in \(project)")
 
             if isAskQuestion || isPlanApproval {
-                // These always require user interaction — notify immediately
                 immediateNotifications.append(info)
             } else {
-                // Permission requests might be auto-approved. Defer notification;
-                // if a response-*.json appears before the grace period expires
-                // (detected in a subsequent scan), the notification is cancelled.
                 pendingNotifications[file] = info
-                let callback = self.onNewRequests
-                DispatchQueue.global().asyncAfter(deadline: .now() + Self.autoApproveGracePeriod) { [self] in
-                    seenLock.lock()
-                    let pending = pendingNotifications.removeValue(forKey: file)
-                    seenLock.unlock()
-                    if let pending {
-                        callback([pending])
-                    }
+                deferredRequests.append((file, info))
+            }
+        }
+        seenFiles = seenFiles.filter { files.contains($0) }
+        seenLock.unlock()
+
+        // Schedule deferred notifications OUTSIDE the lock
+        for (file, _) in deferredRequests {
+            let callback = self.onNewRequests
+            DispatchQueue.global().asyncAfter(deadline: .now() + Self.autoApproveGracePeriod) { [self] in
+                seenLock.lock()
+                let pending = pendingNotifications.removeValue(forKey: file)
+                seenLock.unlock()
+                if let pending {
+                    callback([pending])
                 }
             }
         }
-        // Prune: remove entries for files that no longer exist
-        seenFiles = seenFiles.filter { files.contains($0) }
-        seenLock.unlock()
 
         if !immediateNotifications.isEmpty {
             onNewRequests(immediateNotifications)
@@ -121,12 +117,6 @@ final class CCGUIWatcher: ObservableObject {
     private var monitor: DirectoryMonitor?
     private var telegramBot: TelegramBot?
 
-    private var systemEnabled: Bool {
-        UserDefaults.standard.object(forKey: "systemNotifyEnabled") as? Bool ?? true
-    }
-    private var telegramEnabled: Bool {
-        UserDefaults.standard.object(forKey: "telegramNotifyEnabled") as? Bool ?? true
-    }
 
     /// Directory the CC GUI plugin uses for permission IPC.
     nonisolated static var permissionDir: String {
@@ -206,21 +196,21 @@ final class CCGUIWatcher: ObservableObject {
         let body: String
 
         if req.file.hasPrefix("ask-user-question-") {
-            title = "❓ [\(req.project)] 需要回答"
+            title = "❓ [Claude] [\(req.project)] 需要回答"
             body = "AskUserQuestion"
         } else if req.file.hasPrefix("plan-approval-") {
-            title = "📋 [\(req.project)] 计划待审批"
+            title = "📋 [Claude] [\(req.project)] 计划待审批"
             body = "ExitPlanMode"
         } else {
-            title = "⏳ [\(req.project)] 需要确认"
+            title = "⏳ [Claude] [\(req.project)] 需要确认"
             body = req.toolName
         }
 
-        if systemEnabled {
+        if NotificationPreferences.systemEnabled {
             SystemNotifier.shared.notify(title: title, body: body)
         }
-        if telegramEnabled {
-            Task { await telegramBot?.sendToolConfirmation(project: req.project, message: body) }
+        if NotificationPreferences.telegramEnabled {
+            Task { await telegramBot?.sendToolConfirmation(project: req.project, source: "Claude", message: body) }
         }
     }
 }

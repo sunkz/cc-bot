@@ -7,20 +7,40 @@ struct MenuBarView: View {
     @ObservedObject var ccguiWatcher: CCGUIWatcher
     @ObservedObject var updateChecker: UpdateChecker
 
-    @AppStorage("telegramBotToken") private var token = ""
     @AppStorage("telegramChatId") private var chatId = ""
     @AppStorage("systemNotifyEnabled") private var systemNotifyEnabled = true
     @AppStorage("telegramNotifyEnabled") private var telegramNotifyEnabled = true
     @AppStorage("ccguiWatcherEnabled") private var ccguiWatcherEnabled = true
 
+    @State private var tokenInput: String = ""
     @State private var hookInstalled = HookInstaller.isInstalled()
+    @State private var codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
     @State private var acpProxyInstalled = ACPProxy.isInstalled()
     @State private var alertMessage: String?
+    @State private var tokenPersistTask: Task<Void, Never>?
+
+    private let claudeHookPaths = [
+        "~/.claude/hooks/cc-bot-notification.sh",
+        "~/.claude/hooks/cc-bot-stop.sh",
+        "~/.claude/settings.json",
+    ]
+
+    private let codexHookPaths = [
+        "~/.codex/hooks/cc-bot-notify.sh",
+        "~/.codex/config.toml",
+    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // 状态
-            statusSection
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(hookServer.errorMessage == nil ? .green : .red)
+                    .frame(width: 8, height: 8)
+                Text(hookServer.errorMessage ?? "监听中 :\(hookServer.port)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Divider().padding(.vertical, 6)
 
             // 通知渠道
@@ -59,11 +79,20 @@ struct MenuBarView: View {
                 }
                 .controlSize(.small)
             }
+            if let updateError = updateChecker.lastErrorMessage {
+                Text(updateError)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .padding(.top, 4)
+            }
         }
         .padding(14)
         .frame(width: 260)
         .task {
+            tokenInput = telegramBot.token
             hookInstalled = HookInstaller.isInstalled()
+            codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
             acpProxyInstalled = ACPProxy.isInstalled()
             await updateChecker.check()
         }
@@ -75,20 +104,13 @@ struct MenuBarView: View {
         } message: {
             Text(alertMessage ?? "")
         }
+        .onDisappear {
+            tokenPersistTask?.cancel()
+            telegramBot.saveToken(tokenInput)
+        }
     }
 
     // MARK: - Sections
-
-    private var statusSection: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(hookServer.errorMessage == nil ? .green : .red)
-                .frame(width: 8, height: 8)
-            Text(hookServer.errorMessage ?? "监听中 :\(hookServer.port)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
 
     private var channelSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -113,9 +135,21 @@ struct MenuBarView: View {
             }
 
             VStack(spacing: 6) {
-                SecureField("Bot Token", text: $token)
+                SecureField("Bot Token", text: $tokenInput)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
+                    .onChange(of: tokenInput) { newValue in
+                        tokenPersistTask?.cancel()
+                        tokenPersistTask = Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(400))
+                            guard !Task.isCancelled else { return }
+                            telegramBot.saveToken(newValue)
+                        }
+                    }
+                    .onSubmit {
+                        tokenPersistTask?.cancel()
+                        telegramBot.saveToken(tokenInput)
+                    }
                 TextField("Chat ID", text: $chatId)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
@@ -125,13 +159,13 @@ struct MenuBarView: View {
 
     private var hookSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Claude Code Hook").font(.caption).foregroundStyle(.tertiary)
+            Text("CLI 集成").font(.caption).foregroundStyle(.tertiary)
 
             HStack {
                 Circle()
                     .fill(hookInstalled ? .green : .gray)
                     .frame(width: 8, height: 8)
-                Text(hookInstalled ? "已安装" : "未安装")
+                Text("Claude Code Hook")
                     .font(.callout)
 
                 Spacer()
@@ -140,6 +174,39 @@ struct MenuBarView: View {
                     toggleHook()
                 }
                 .controlSize(.small)
+            }
+
+            if hookInstalled {
+                ForEach(claudeHookPaths, id: \.self) { path in
+                    Text(path)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+
+            HStack {
+                Circle()
+                    .fill(codexNotifyInstalled ? .green : .gray)
+                    .frame(width: 8, height: 8)
+                Text("Codex Notify")
+                    .font(.callout)
+
+                Spacer()
+
+                Button(codexNotifyInstalled ? "卸载" : "安装") {
+                    toggleCodexNotify()
+                }
+                .controlSize(.small)
+            }
+
+            if codexNotifyInstalled {
+                ForEach(codexHookPaths, id: \.self) { path in
+                    Text(path)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
         }
     }
@@ -201,7 +268,7 @@ struct MenuBarView: View {
     private func toggleACPProxy() {
         do {
             if acpProxyInstalled {
-                ACPProxy.uninstall()
+                try ACPProxy.uninstall()
             } else {
                 try ACPProxy.install()
             }
@@ -225,4 +292,22 @@ struct MenuBarView: View {
             alertMessage = error.localizedDescription
         }
     }
+
+    private func toggleCodexNotify() {
+        do {
+            if codexNotifyInstalled {
+                try CodexNotifyInstaller.uninstall()
+            } else {
+                try CodexNotifyInstaller.install()
+            }
+            codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
+        } catch CodexNotifyInstaller.InstallError.codexNotInstalled {
+            alertMessage = "未检测到 ~/.codex 目录，请先安装 Codex"
+        } catch CodexNotifyInstaller.InstallError.notifyAlreadyConfigured {
+            alertMessage = "检测到 ~/.codex/config.toml 已有 notify 配置，请先手动处理现有配置"
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
 }

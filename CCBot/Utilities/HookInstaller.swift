@@ -7,20 +7,32 @@ struct HookInstaller {
     static let settingsPath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".claude/settings.json")
 
-    static let notificationScript = """
-    #!/bin/bash
-    INPUT=$(cat)
-    echo "$INPUT" | curl -sf -X POST http://localhost:62400/hook/notification -H 'Content-Type: application/json' -d @- --max-time 5 &
-    exit 0
-    """
+    static var notificationScript: String {
+        """
+        #!/bin/bash
+        TOKEN=$(cat ~/.claude/hooks/.ccbot-auth 2>/dev/null)
+        INPUT=$(cat)
+        echo "$INPUT" | curl -sf -X POST http://localhost:\(Constants.serverPort)/hook/notification \
+          -H 'Content-Type: application/json' \
+          -H "Authorization: Bearer $TOKEN" \
+          -d @- --max-time 5 &
+        exit 0
+        """
+    }
 
-    static let stopScript = """
-    #!/bin/bash
-    INPUT=$(cat)
-    if echo "$INPUT" | grep -q '"stop_hook_active"[[:space:]]*:[[:space:]]*true'; then exit 0; fi
-    echo "$INPUT" | curl -sf -X POST http://localhost:62400/hook/stop -H 'Content-Type: application/json' -d @- --max-time 5 &
-    exit 0
-    """
+    static var stopScript: String {
+        """
+        #!/bin/bash
+        TOKEN=$(cat ~/.claude/hooks/.ccbot-auth 2>/dev/null)
+        INPUT=$(cat)
+        if echo "$INPUT" | grep -q '"stop_hook_active"[[:space:]]*:[[:space:]]*true'; then exit 0; fi
+        echo "$INPUT" | curl -sf -X POST http://localhost:\(Constants.serverPort)/hook/stop \
+          -H 'Content-Type: application/json' \
+          -H "Authorization: Bearer $TOKEN" \
+          -d @- --max-time 5 &
+        exit 0
+        """
+    }
 
     enum InstallError: Error {
         case claudeNotInstalled
@@ -50,7 +62,7 @@ struct HookInstaller {
         // Merge into settings.json
         let existing = (try? Data(contentsOf: claudeSettings)) ?? Data("{}".utf8)
         let merged = try mergeHooks(into: existing)
-        try merged.write(to: claudeSettings, options: .atomic)
+        try writeWithBackupRollback(merged, to: claudeSettings, fileManager: fm)
     }
 
     static func mergeHooks(into data: Data) throws -> Data {
@@ -85,16 +97,16 @@ struct HookInstaller {
         // Remove hook scripts
         let notificationPath = hooksDir.appendingPathComponent("cc-bot-notification.sh")
         let stopPath = hooksDir.appendingPathComponent("cc-bot-stop.sh")
-        try? fm.removeItem(at: notificationPath)
-        try? fm.removeItem(at: stopPath)
+        try removeItemIfExists(notificationPath, fileManager: fm)
+        try removeItemIfExists(stopPath, fileManager: fm)
         // Clean up legacy PreToolUse script
-        try? fm.removeItem(at: hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh"))
+        try removeItemIfExists(hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh"), fileManager: fm)
 
         // Remove hook entries from settings.json
         guard fm.fileExists(atPath: settingsPath.path) else { return }
         let existing = try Data(contentsOf: settingsPath)
         let cleaned = try removeHooks(from: existing)
-        try cleaned.write(to: settingsPath, options: .atomic)
+        try writeWithBackupRollback(cleaned, to: settingsPath, fileManager: fm)
     }
 
     static func removeHooks(from data: Data) throws -> Data {
@@ -107,9 +119,13 @@ struct HookInstaller {
 
         func remove(key: String, command: String) {
             guard var entries = hooks[key] as? [[String: Any]] else { return }
-            entries.removeAll { entry in
-                let hooksList = entry["hooks"] as? [[String: Any]] ?? []
-                return hooksList.contains { ($0["command"] as? String) == command }
+            entries = entries.compactMap { entry in
+                var mutableEntry = entry
+                var hooksList = mutableEntry["hooks"] as? [[String: Any]] ?? []
+                hooksList.removeAll { ($0["command"] as? String) == command }
+                guard !hooksList.isEmpty else { return nil }
+                mutableEntry["hooks"] = hooksList
+                return mutableEntry
             }
             if entries.isEmpty {
                 hooks.removeValue(forKey: key)
@@ -137,7 +153,7 @@ struct HookInstaller {
     }
 
     /// Overwrite hook scripts with latest version if already installed.
-    static func updateScriptsIfInstalled() {
+    static func updateScriptsIfInstalled() throws {
         guard isInstalled() else { return }
         let fm = FileManager.default
         let paths: [(URL, String)] = [
@@ -145,10 +161,46 @@ struct HookInstaller {
             (hooksDir.appendingPathComponent("cc-bot-stop.sh"), stopScript),
         ]
         // Clean up legacy PreToolUse script
-        try? FileManager.default.removeItem(at: hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh"))
+        try removeItemIfExists(hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh"), fileManager: fm)
         for (url, content) in paths {
-            try? content.write(to: url, atomically: true, encoding: .utf8)
-            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+            try content.write(to: url, atomically: true, encoding: .utf8)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+    }
+
+    private static func removeItemIfExists(_ url: URL, fileManager: FileManager) throws {
+        do {
+            try fileManager.removeItem(at: url)
+        } catch let error as NSError {
+            if error.domain == NSCocoaErrorDomain, error.code == NSFileNoSuchFileError {
+                return
+            }
+            throw error
+        }
+    }
+
+    private static func writeWithBackupRollback(_ data: Data, to url: URL, fileManager: FileManager) throws {
+        let backupURL = url.appendingPathExtension("ccbot.bak")
+        let hadOriginal = fileManager.fileExists(atPath: url.path)
+
+        if hadOriginal {
+            try? removeItemIfExists(backupURL, fileManager: fileManager)
+            try fileManager.copyItem(at: url, to: backupURL)
+        }
+
+        do {
+            try data.write(to: url, options: .atomic)
+            if hadOriginal {
+                try? removeItemIfExists(backupURL, fileManager: fileManager)
+            }
+        } catch {
+            if hadOriginal {
+                try? removeItemIfExists(url, fileManager: fileManager)
+                try? fileManager.moveItem(at: backupURL, to: url)
+            } else {
+                try? removeItemIfExists(url, fileManager: fileManager)
+            }
+            throw error
         }
     }
 }

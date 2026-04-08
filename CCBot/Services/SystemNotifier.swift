@@ -26,11 +26,10 @@ final class SystemNotifier {
         UNUserNotificationCenter.current().add(request)
     }
 
-    func notifyCompletion(project: String, message: String) {
-        let plain = stripMarkdown(message)
+    func notifyCompletion(project: String, source: String, message: String) {
         notify(
-            title: "✅ [\(project)] 任务完成",
-            body: String(plain.prefix(100))
+            title: MessageFormatter.notificationTitle(kind: .completion, source: source, project: project),
+            body: MessageFormatter.notificationBody(detail: message)
         )
     }
 }

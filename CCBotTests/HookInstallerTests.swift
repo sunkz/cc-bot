@@ -38,4 +38,42 @@ final class HookInstallerTests: XCTestCase {
         }
         XCTAssertEqual(ccbotEntries.count, 1)
     }
+
+    func testRemoveHooksKeepsForeignEntries() throws {
+        let existing = """
+        {
+          "hooks": {
+            "Notification": [
+              {
+                "matcher": "",
+                "hooks": [
+                  {"type": "command", "command": "bash ~/.claude/hooks/cc-bot-notification.sh"},
+                  {"type": "command", "command": "echo foreign"}
+                ]
+              }
+            ],
+            "Stop": [
+              {
+                "matcher": "",
+                "hooks": [
+                  {"type": "command", "command": "bash ~/.claude/hooks/cc-bot-stop.sh"}
+                ]
+              }
+            ]
+          }
+        }
+        """.data(using: .utf8)!
+
+        let cleaned = try HookInstaller.removeHooks(from: existing)
+        let json = try JSONSerialization.jsonObject(with: cleaned) as! [String: Any]
+        let hooks = json["hooks"] as? [String: Any]
+        let notification = hooks?["Notification"] as? [[String: Any]]
+        let commands = notification?.flatMap { entry in
+            (entry["hooks"] as? [[String: Any]] ?? []).compactMap { $0["command"] as? String }
+        } ?? []
+
+        XCTAssertTrue(commands.contains("echo foreign"))
+        XCTAssertFalse(commands.contains("bash ~/.claude/hooks/cc-bot-notification.sh"))
+        XCTAssertNil(hooks?["Stop"])
+    }
 }

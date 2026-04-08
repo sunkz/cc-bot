@@ -10,7 +10,7 @@ enum ACPProxy {
 
     static let scriptPath: URL = hooksDir.appendingPathComponent("cc-bot-acp-proxy.mjs")
 
-    static let proxyScript = #"""
+    static var proxyScript: String { #"""
     #!/usr/bin/env node
     // cc-bot-acp-proxy.mjs
     // ACP Proxy — wraps any ACP server command, intercepts
@@ -30,8 +30,11 @@ enum ACPProxy {
     import { spawn } from 'node:child_process';
     import { createInterface } from 'node:readline';
     import http from 'node:http';
+    import { readFileSync } from 'node:fs';
 
-    const CCBOT_PORT = parseInt(process.env.CCBOT_PORT || '62400', 10);
+    const CCBOT_PORT = parseInt(process.env.CCBOT_PORT || '\#(Constants.serverPort)', 10);
+    const CCBOT_TOKEN = (() => { try { return readFileSync(
+      `${process.env.HOME}/.claude/hooks/.ccbot-auth`, 'utf8').trim(); } catch { return ''; } })();
 
     // First arg = real command, rest = its args
     const realCmd = process.argv[2];
@@ -73,7 +76,7 @@ enum ACPProxy {
         port: CCBOT_PORT,
         path: '/hook/notification',
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'Authorization': `Bearer ${CCBOT_TOKEN}` },
         timeout: 2000,
       });
       req.on('error', () => {}); // swallow — CCBot may not be running
@@ -109,7 +112,7 @@ enum ACPProxy {
     child.on('exit', (code) => process.exit(code ?? 1));
     process.on('SIGTERM', () => child.kill('SIGTERM'));
     process.on('SIGINT', () => child.kill('SIGINT'));
-    """#
+    """# }
 
     static func install() throws {
         let fm = FileManager.default
@@ -118,8 +121,8 @@ enum ACPProxy {
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
     }
 
-    static func uninstall() {
-        try? FileManager.default.removeItem(at: scriptPath)
+    static func uninstall() throws {
+        try FileManager.default.removeItem(at: scriptPath)
     }
 
     static func isInstalled() -> Bool {
@@ -127,9 +130,9 @@ enum ACPProxy {
     }
 
     /// Overwrite script with latest version if already installed.
-    static func updateIfInstalled() {
+    static func updateIfInstalled() throws {
         guard isInstalled() else { return }
-        try? proxyScript.write(to: scriptPath, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
+        try proxyScript.write(to: scriptPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
     }
 }

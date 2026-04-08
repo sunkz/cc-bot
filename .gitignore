@@ -4,6 +4,7 @@ xcuserdata/
 *.xccheckout
 *.moved-aside
 DerivedData/
+.deriveddata/
 *.hmap
 *.ipa
 *.xcarchive

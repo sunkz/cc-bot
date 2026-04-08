@@ -1,5 +1,8 @@
 // CCBot/AppState.swift
 import SwiftUI
+import os.log
+
+private let log = Logger(subsystem: "com.ccbot.app", category: "AppState")
 
 @MainActor
 final class AppState: ObservableObject {
@@ -15,12 +18,23 @@ final class AppState: ObservableObject {
     func start() {
         guard !started else { return }
         started = true
+
+        // Ensure auth token file exists
+        _ = Constants.ensureAuthToken()
+
         SystemNotifier.shared.requestPermission()
-        HookInstaller.updateScriptsIfInstalled()
-        ACPProxy.updateIfInstalled()
+
+        do { try HookInstaller.updateScriptsIfInstalled() }
+        catch { log.error("Hook scripts update failed: \(error)") }
+
+        do { try CodexNotifyInstaller.updateScriptIfInstalled() }
+        catch { log.error("Codex notify update failed: \(error)") }
+
+        do { try ACPProxy.updateIfInstalled() }
+        catch { log.error("ACP proxy update failed: \(error)") }
+
         hookServer.start(telegram: telegramBot)
 
-        // Start CC GUI watcher if enabled
         if UserDefaults.standard.object(forKey: "ccguiWatcherEnabled") as? Bool ?? true {
             ccguiWatcher.start(telegram: telegramBot)
         }
