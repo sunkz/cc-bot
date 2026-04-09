@@ -6,6 +6,7 @@ import os.log
 private let log = Logger(subsystem: "com.ccbot.app", category: "HookServer")
 private let maxHookBodyBytes = 1_048_576 // 1 MB
 private let maxHookRequestBytes = 1_056_768 // body + headers safety margin
+private let httpHeaderSeparator = Data("\r\n\r\n".utf8)
 
 struct ParsedRequest {
     let method: String
@@ -29,6 +30,9 @@ final class HookServer: ObservableObject {
     private let deduplicateInterval: TimeInterval = 6
     private var restartAttempts = 0
     private let maxRestartAttempts = 3
+    private nonisolated static let permissionRegex = try! NSRegularExpression(
+        pattern: #"(?i)permission to use\s+([a-z0-9._/-]+)"#
+    )
 
     func start(telegram: TelegramBot) {
         self.telegramBot = telegram
@@ -136,8 +140,7 @@ final class HookServer: ObservableObject {
     }
 
     nonisolated func parseHTTPRequest(from data: Data) -> ParsedRequest? {
-        let separator = Data("\r\n\r\n".utf8)
-        guard let headerRange = data.range(of: separator),
+        guard let headerRange = data.range(of: httpHeaderSeparator),
               let headerText = String(data: data[..<headerRange.lowerBound], encoding: .utf8)
         else { return nil }
 
@@ -178,8 +181,7 @@ final class HookServer: ObservableObject {
     }
 
     nonisolated private func contentLengthIfAvailable(from data: Data) -> Int? {
-        let separator = Data("\r\n\r\n".utf8)
-        guard let headerRange = data.range(of: separator),
+        guard let headerRange = data.range(of: httpHeaderSeparator),
               let headerText = String(data: data[..<headerRange.lowerBound], encoding: .utf8)
         else { return nil }
 
@@ -269,95 +271,67 @@ final class HookServer: ObservableObject {
         return false
     }
 
+    private func dispatchNotification(kind: MessageFormatter.NotificationKind, source: String, project: String, message: String) {
+        guard NotificationPreferences.systemEnabled || NotificationPreferences.telegramEnabled else { return }
+        let title = MessageFormatter.notificationTitle(kind: kind, source: source, project: project)
+        let body = MessageFormatter.notificationBody(detail: message)
+        if NotificationPreferences.systemEnabled {
+            SystemNotifier.shared.notify(title: title, body: body)
+        }
+        if NotificationPreferences.telegramEnabled {
+            Task {
+                switch kind {
+                case .completion:
+                    await telegramBot?.sendCompletion(project: project, source: source, message: message)
+                case .approval:
+                    await telegramBot?.sendToolConfirmation(project: project, source: source, message: message)
+                default:
+                    await telegramBot?.sendNotification(project: project, source: source, message: message)
+                }
+            }
+        }
+    }
+
     private func handleClaudeNotification(json: [String: Any]) {
         let cwd = stringValue(in: json, key: "cwd")
         let message = stringValue(in: json, key: "message")
         let project = projectName(from: cwd)
         guard !shouldThrottle(key: "notification:\(project)") else { return }
 
-        // Detect permission request: "Claude needs your permission to use Bash"
         let isPermission = message.contains("needs your permission")
-        let eventType = isPermission ? "approval-requested" : "notification"
-        if shouldDeduplicate(source: "Claude", project: project, eventType: eventType, message: message) {
+        let eventType = isPermission ? Constants.codexEventApproval : "notification"
+        if shouldDeduplicate(source: Constants.sourceClaude, project: project, eventType: eventType, message: message) {
             log.notice("event=hook_deduplicated source=Claude project=\(project) type=\(eventType)")
             return
         }
-        let title: String
-        let body: String
-        if isPermission {
-            title = MessageFormatter.notificationTitle(kind: .approval, source: "Claude", project: project)
-            body = MessageFormatter.notificationBody(detail: permissionSummary(from: message))
-        } else {
-            title = MessageFormatter.notificationTitle(kind: .info, source: "Claude", project: project)
-            body = MessageFormatter.notificationBody(detail: message)
-        }
 
-        if NotificationPreferences.systemEnabled {
-            SystemNotifier.shared.notify(title: title, body: body)
-        }
-        if NotificationPreferences.telegramEnabled {
-            if isPermission {
-                Task { await telegramBot?.sendToolConfirmation(project: project, source: "Claude", message: body) }
-            } else {
-                Task { await telegramBot?.sendNotification(project: project, source: "Claude", message: message) }
-            }
+        if isPermission {
+            dispatchNotification(kind: .approval, source: Constants.sourceClaude, project: project, message: permissionSummary(from: message))
+        } else {
+            dispatchNotification(kind: .info, source: Constants.sourceClaude, project: project, message: message)
         }
     }
 
     private func handleCodexNotification(json: [String: Any]) {
         let eventType = stringValue(in: json, key: "type")
         let cwd = stringValue(in: json, key: "cwd")
-        let project = projectName(from: cwd, fallback: "Codex")
+        let project = projectName(from: cwd, fallback: Constants.sourceCodex)
         let body = codexBody(from: json)
 
         guard !shouldThrottle(key: "codex:\(eventType):\(project)") else { return }
-        if shouldDeduplicate(source: "Codex", project: project, eventType: eventType, message: body) {
+        if shouldDeduplicate(source: Constants.sourceCodex, project: project, eventType: eventType, message: body) {
             log.notice("event=hook_deduplicated source=Codex project=\(project) type=\(eventType)")
             return
         }
 
-        switch eventType {
-        case "agent-turn-complete":
-            if NotificationPreferences.systemEnabled {
-                SystemNotifier.shared.notify(
-                    title: MessageFormatter.notificationTitle(kind: .completion, source: "Codex", project: project),
-                    body: MessageFormatter.notificationBody(detail: body)
-                )
-            }
-            if NotificationPreferences.telegramEnabled {
-                Task { await telegramBot?.sendCompletion(project: project, source: "Codex", message: body) }
-            }
-        case "approval-requested":
-            if NotificationPreferences.systemEnabled {
-                SystemNotifier.shared.notify(
-                    title: MessageFormatter.notificationTitle(kind: .approval, source: "Codex", project: project),
-                    body: MessageFormatter.notificationBody(detail: body)
-                )
-            }
-            if NotificationPreferences.telegramEnabled {
-                Task { await telegramBot?.sendToolConfirmation(project: project, source: "Codex", message: body) }
-            }
-        case "user-input-requested":
-            if NotificationPreferences.systemEnabled {
-                SystemNotifier.shared.notify(
-                    title: MessageFormatter.notificationTitle(kind: .input, source: "Codex", project: project),
-                    body: MessageFormatter.notificationBody(detail: body)
-                )
-            }
-            if NotificationPreferences.telegramEnabled {
-                Task { await telegramBot?.sendNotification(project: project, source: "Codex", message: "等待输入: \(body)") }
-            }
-        default:
-            if NotificationPreferences.systemEnabled {
-                SystemNotifier.shared.notify(
-                    title: MessageFormatter.notificationTitle(kind: .info, source: "Codex", project: project),
-                    body: MessageFormatter.notificationBody(detail: body)
-                )
-            }
-            if NotificationPreferences.telegramEnabled {
-                Task { await telegramBot?.sendNotification(project: project, source: "Codex", message: body) }
-            }
+        let kind: MessageFormatter.NotificationKind = switch eventType {
+        case Constants.codexEventTurnComplete: .completion
+        case Constants.codexEventApproval: .approval
+        case Constants.codexEventInput: .input
+        default: .info
         }
+        let message = (eventType == Constants.codexEventInput) ? "等待输入: \(body)" : body
+        dispatchNotification(kind: kind, source: Constants.sourceCodex, project: project, message: message)
     }
 
     private func handleStop(json: [String: Any]) {
@@ -367,19 +341,11 @@ final class HookServer: ObservableObject {
             : stringValue(in: json, key: "last_assistant_message")
         let project = projectName(from: cwd)
         guard !shouldThrottle(key: "stop:\(project)") else { return }
-        if shouldDeduplicate(source: "Claude", project: project, eventType: "stop", message: lastMessage) {
+        if shouldDeduplicate(source: Constants.sourceClaude, project: project, eventType: "stop", message: lastMessage) {
             log.notice("event=hook_deduplicated source=Claude project=\(project) type=stop")
             return
         }
-        if NotificationPreferences.systemEnabled {
-            SystemNotifier.shared.notify(
-                title: MessageFormatter.notificationTitle(kind: .completion, source: "Claude", project: project),
-                body: MessageFormatter.notificationBody(detail: lastMessage)
-            )
-        }
-        if NotificationPreferences.telegramEnabled {
-            Task { await telegramBot?.sendCompletion(project: project, source: "Claude", message: lastMessage) }
-        }
+        dispatchNotification(kind: .completion, source: Constants.sourceClaude, project: project, message: lastMessage)
     }
 
     func projectName(from cwd: String, fallback: String = "unknown") -> String {
@@ -391,10 +357,13 @@ final class HookServer: ObservableObject {
         json[key] as? String ?? ""
     }
 
+    private static let whitespaceRegex = try! NSRegularExpression(pattern: #"\s+"#)
+
     private func normalizedMessage(_ text: String) -> String {
         let stripped = MessageFormatter.prepare(text, maxLength: Constants.messageTruncateLength)
         let lowercased = stripped.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        return lowercased.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        let range = NSRange(lowercased.startIndex..<lowercased.endIndex, in: lowercased)
+        return Self.whitespaceRegex.stringByReplacingMatches(in: lowercased, range: range, withTemplate: " ")
     }
 
     private func codexBody(from json: [String: Any]) -> String {
@@ -411,11 +380,11 @@ final class HookServer: ObservableObject {
         }
 
         switch stringValue(in: json, key: "type") {
-        case "agent-turn-complete":
+        case Constants.codexEventTurnComplete:
             return "Codex 任务已完成"
-        case "approval-requested":
+        case Constants.codexEventApproval:
             return "Codex 需要你的确认"
-        case "user-input-requested":
+        case Constants.codexEventInput:
             return "Codex 正在等待你的输入"
         default:
             return "收到 Codex 通知"
@@ -423,23 +392,14 @@ final class HookServer: ObservableObject {
     }
 
     private func permissionSummary(from message: String) -> String {
-        guard let tool = extractFirstMatch(
-            pattern: #"(?i)permission to use\s+([a-z0-9._/-]+)"#,
-            in: message
-        ) else {
+        let range = NSRange(message.startIndex..<message.endIndex, in: message)
+        guard let match = Self.permissionRegex.firstMatch(in: message, range: range),
+              match.numberOfRanges >= 2,
+              let captureRange = Range(match.range(at: 1), in: message)
+        else {
             return message
         }
-        return "工具: \(tool)"
-    }
-
-    private func extractFirstMatch(pattern: String, in text: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: range), match.numberOfRanges >= 2 else {
-            return nil
-        }
-        guard let captureRange = Range(match.range(at: 1), in: text) else { return nil }
-        return String(text[captureRange])
+        return "工具: \(String(message[captureRange]))"
     }
 
     nonisolated private func sendResponse(conn: NWConnection, status: Int, body: String) {

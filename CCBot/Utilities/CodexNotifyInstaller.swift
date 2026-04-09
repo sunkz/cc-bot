@@ -37,17 +37,17 @@ struct CodexNotifyInstaller {
 
         let existing = (try? Data(contentsOf: configPath)) ?? Data()
         let merged = try mergeNotify(into: existing)
-        try writeWithBackupRollback(merged, to: configPath, fileManager: fm)
+        try FileUtilities.writeWithBackupRollback(merged, to: configPath, fileManager: fm)
     }
 
     static func uninstall() throws {
         let fm = FileManager.default
-        try removeItemIfExists(scriptPath, fileManager: fm)
+        try FileUtilities.removeItemIfExists(scriptPath, fileManager: fm)
 
         guard fm.fileExists(atPath: configPath.path) else { return }
         let existing = try Data(contentsOf: configPath)
         let cleaned = try removeNotify(from: existing)
-        try writeWithBackupRollback(cleaned, to: configPath, fileManager: fm)
+        try FileUtilities.writeWithBackupRollback(cleaned, to: configPath, fileManager: fm)
     }
 
     static func isInstalled() -> Bool {
@@ -127,39 +127,4 @@ struct CodexNotifyInstaller {
         text.range(of: #"(?m)^notify\s*=.*$"#, options: .regularExpression)
     }
 
-    private static func removeItemIfExists(_ url: URL, fileManager: FileManager) throws {
-        do {
-            try fileManager.removeItem(at: url)
-        } catch let error as NSError {
-            if error.domain == NSCocoaErrorDomain, error.code == NSFileNoSuchFileError {
-                return
-            }
-            throw error
-        }
-    }
-
-    private static func writeWithBackupRollback(_ data: Data, to url: URL, fileManager: FileManager) throws {
-        let backupURL = url.appendingPathExtension("ccbot.bak")
-        let hadOriginal = fileManager.fileExists(atPath: url.path)
-
-        if hadOriginal {
-            try? removeItemIfExists(backupURL, fileManager: fileManager)
-            try fileManager.copyItem(at: url, to: backupURL)
-        }
-
-        do {
-            try data.write(to: url, options: .atomic)
-            if hadOriginal {
-                try? removeItemIfExists(backupURL, fileManager: fileManager)
-            }
-        } catch {
-            if hadOriginal {
-                try? removeItemIfExists(url, fileManager: fileManager)
-                try? fileManager.moveItem(at: backupURL, to: url)
-            } else {
-                try? removeItemIfExists(url, fileManager: fileManager)
-            }
-            throw error
-        }
-    }
 }

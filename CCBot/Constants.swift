@@ -5,6 +5,21 @@ enum Constants {
     static let serverPort: UInt16 = 62400
     static let messageTruncateLength = 200
 
+    // MARK: - Notification source names
+    static let sourceClaude = "Claude"
+    static let sourceCodex = "Codex"
+
+    // MARK: - Codex event types
+    static let codexEventTurnComplete = "agent-turn-complete"
+    static let codexEventApproval = "approval-requested"
+    static let codexEventInput = "user-input-requested"
+
+    // MARK: - CC GUI file prefixes
+    static let prefixAskQuestion = "ask-user-question-"
+    static let prefixPlanApproval = "plan-approval-"
+    static let prefixRequest = "request-"
+    static let prefixResponse = "response-"
+
     private static let authTokenPath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".claude/hooks/.ccbot-auth")
 

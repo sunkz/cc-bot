@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		05C7817C1BA6837AA094DB0F /* StringUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 374ED3297227ACEE4ED4A327 /* StringUtils.swift */; };
+		F1A2B3C4D5E6F708A9B0C1D2 /* FileUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D2C3B4A5F60798B9A0D1C2 /* FileUtilities.swift */; };
 		156FA150E6990531DFBC5454 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88475B3A6A261E749F86F4F4 /* AppState.swift */; };
 		211AB555DFDC5ECD65A9E340 /* TelegramBotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 228CE61D070879072A30A8E2 /* TelegramBotTests.swift */; };
 		565A6699E9A791277BB49991 /* SystemNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E25B4511CE8B72819DDE0D /* SystemNotifier.swift */; };
@@ -70,6 +71,7 @@
 		CB316C35F51F5510D97600A1 /* HookInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookInstaller.swift; sourceTree = "<group>"; };
 		CCF32A158EB479B567D56BA8 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		DF494761C6ADF29CCBAEE544 /* ConstantsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConstantsTests.swift; sourceTree = "<group>"; };
+		E1D2C3B4A5F60798B9A0D1C2 /* FileUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUtilities.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -107,6 +109,7 @@
 			isa = PBXGroup;
 			children = (
 				6B49F0D7238A29B8133DDF7F /* CodexNotifyInstaller.swift */,
+				E1D2C3B4A5F60798B9A0D1C2 /* FileUtilities.swift */,
 				CB316C35F51F5510D97600A1 /* HookInstaller.swift */,
 				1D48B4A8FAB2B185A6A58EA5 /* MessageFormatter.swift */,
 				C28D30BCD6466138CADCC3CE /* NotificationPreferences.swift */,
@@ -252,6 +255,7 @@
 				C5E4649F8F1EA8CC8348962D /* CCGUIWatcher.swift in Sources */,
 				76188C78BB4DD9F302367DC3 /* CodexNotifyInstaller.swift in Sources */,
 				97427DB2FAAE0629A7AD8311 /* Constants.swift in Sources */,
+				F1A2B3C4D5E6F708A9B0C1D2 /* FileUtilities.swift in Sources */,
 				BDA16936045ED0C2F92726D9 /* HookInstaller.swift in Sources */,
 				940CB91619B729EC1983A6B4 /* HookServer.swift in Sources */,
 				F716F326490FF7B2E6A2E1EE /* MenuBarView.swift in Sources */,

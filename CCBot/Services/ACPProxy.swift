@@ -122,7 +122,7 @@ enum ACPProxy {
     }
 
     static func uninstall() throws {
-        try FileManager.default.removeItem(at: scriptPath)
+        try FileUtilities.removeItemIfExists(scriptPath)
     }
 
     static func isInstalled() -> Bool {

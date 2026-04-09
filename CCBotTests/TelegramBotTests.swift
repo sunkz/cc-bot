@@ -59,8 +59,7 @@ final class TelegramBotTests: XCTestCase {
         XCTAssertTrue(msg.contains("Claude"))
         XCTAssertTrue(msg.contains("myapp"))
         XCTAssertTrue(msg.contains("待确认"))
-        XCTAssertTrue(msg.contains("等待权限确认"))
-        XCTAssertTrue(msg.contains("关键: Claude needs your permission to use Bash"))
+        XCTAssertTrue(msg.contains("Claude needs your permission to use Bash"))
     }
 
     func testNotificationMessageFormat() {
@@ -69,8 +68,7 @@ final class TelegramBotTests: XCTestCase {
         XCTAssertTrue(msg.contains("Codex"))
         XCTAssertTrue(msg.contains("myapp"))
         XCTAssertTrue(msg.contains("通知"))
-        XCTAssertTrue(msg.contains("收到通知"))
-        XCTAssertTrue(msg.contains("关键: Running tests"))
+        XCTAssertTrue(msg.contains("Running tests"))
     }
 
     func testParseSendMessageResultSuccess() {

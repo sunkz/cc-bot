@@ -49,17 +49,17 @@ private final class DirectoryMonitor: @unchecked Sendable {
 
             guard file.hasSuffix(".json") else { continue }
 
-            if file.hasPrefix("response-") {
-                let requestFile = "request-" + file.dropFirst("response-".count)
+            if file.hasPrefix(Constants.prefixResponse) {
+                let requestFile = Constants.prefixRequest + file.dropFirst(Constants.prefixResponse.count)
                 if pendingNotifications.removeValue(forKey: requestFile) != nil {
                     log.debug("Auto-approved (response detected), skipping notification: \(requestFile)")
                 }
                 continue
             }
 
-            let isAskQuestion = file.hasPrefix("ask-user-question-") && !file.contains("-response-")
-            let isPlanApproval = file.hasPrefix("plan-approval-") && !file.contains("-response-")
-            let isPermissionRequest = file.hasPrefix("request-")
+            let isAskQuestion = file.hasPrefix(Constants.prefixAskQuestion) && !file.contains("-response-")
+            let isPlanApproval = file.hasPrefix(Constants.prefixPlanApproval) && !file.contains("-response-")
+            let isPermissionRequest = file.hasPrefix(Constants.prefixRequest)
 
             guard isAskQuestion || isPlanApproval || isPermissionRequest else { continue }
 
@@ -192,25 +192,36 @@ final class CCGUIWatcher: ObservableObject {
     // MARK: - Notify (MainActor)
 
     private func notify(_ req: PermissionRequestInfo) {
-        let title: String
+        let kind: MessageFormatter.NotificationKind
         let body: String
 
-        if req.file.hasPrefix("ask-user-question-") {
-            title = "❓ [Claude] [\(req.project)] 需要回答"
+        if req.file.hasPrefix(Constants.prefixAskQuestion) {
+            kind = .input
             body = "AskUserQuestion"
-        } else if req.file.hasPrefix("plan-approval-") {
-            title = "📋 [Claude] [\(req.project)] 计划待审批"
+        } else if req.file.hasPrefix(Constants.prefixPlanApproval) {
+            kind = .approval
             body = "ExitPlanMode"
         } else {
-            title = "⏳ [Claude] [\(req.project)] 需要确认"
+            kind = .approval
             body = req.toolName
         }
 
+        guard NotificationPreferences.systemEnabled || NotificationPreferences.telegramEnabled else { return }
+        let source = Constants.sourceClaude
+        let title = MessageFormatter.notificationTitle(kind: kind, source: source, project: req.project)
+        let formattedBody = MessageFormatter.notificationBody(detail: body)
         if NotificationPreferences.systemEnabled {
-            SystemNotifier.shared.notify(title: title, body: body)
+            SystemNotifier.shared.notify(title: title, body: formattedBody)
         }
         if NotificationPreferences.telegramEnabled {
-            Task { await telegramBot?.sendToolConfirmation(project: req.project, source: "Claude", message: body) }
+            Task {
+                switch kind {
+                case .input:
+                    await telegramBot?.sendNotification(project: req.project, source: source, message: body)
+                default:
+                    await telegramBot?.sendToolConfirmation(project: req.project, source: source, message: body)
+                }
+            }
         }
     }
 }

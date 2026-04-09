@@ -62,7 +62,7 @@ struct HookInstaller {
         // Merge into settings.json
         let existing = (try? Data(contentsOf: claudeSettings)) ?? Data("{}".utf8)
         let merged = try mergeHooks(into: existing)
-        try writeWithBackupRollback(merged, to: claudeSettings, fileManager: fm)
+        try FileUtilities.writeWithBackupRollback(merged, to: claudeSettings, fileManager: fm)
     }
 
     static func mergeHooks(into data: Data) throws -> Data {
@@ -97,16 +97,16 @@ struct HookInstaller {
         // Remove hook scripts
         let notificationPath = hooksDir.appendingPathComponent("cc-bot-notification.sh")
         let stopPath = hooksDir.appendingPathComponent("cc-bot-stop.sh")
-        try removeItemIfExists(notificationPath, fileManager: fm)
-        try removeItemIfExists(stopPath, fileManager: fm)
+        try FileUtilities.removeItemIfExists(notificationPath, fileManager: fm)
+        try FileUtilities.removeItemIfExists(stopPath, fileManager: fm)
         // Clean up legacy PreToolUse script
-        try removeItemIfExists(hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh"), fileManager: fm)
+        try FileUtilities.removeItemIfExists(hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh"), fileManager: fm)
 
         // Remove hook entries from settings.json
         guard fm.fileExists(atPath: settingsPath.path) else { return }
         let existing = try Data(contentsOf: settingsPath)
         let cleaned = try removeHooks(from: existing)
-        try writeWithBackupRollback(cleaned, to: settingsPath, fileManager: fm)
+        try FileUtilities.writeWithBackupRollback(cleaned, to: settingsPath, fileManager: fm)
     }
 
     static func removeHooks(from data: Data) throws -> Data {
@@ -161,46 +161,11 @@ struct HookInstaller {
             (hooksDir.appendingPathComponent("cc-bot-stop.sh"), stopScript),
         ]
         // Clean up legacy PreToolUse script
-        try removeItemIfExists(hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh"), fileManager: fm)
+        try FileUtilities.removeItemIfExists(hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh"), fileManager: fm)
         for (url, content) in paths {
             try content.write(to: url, atomically: true, encoding: .utf8)
             try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         }
     }
 
-    private static func removeItemIfExists(_ url: URL, fileManager: FileManager) throws {
-        do {
-            try fileManager.removeItem(at: url)
-        } catch let error as NSError {
-            if error.domain == NSCocoaErrorDomain, error.code == NSFileNoSuchFileError {
-                return
-            }
-            throw error
-        }
-    }
-
-    private static func writeWithBackupRollback(_ data: Data, to url: URL, fileManager: FileManager) throws {
-        let backupURL = url.appendingPathExtension("ccbot.bak")
-        let hadOriginal = fileManager.fileExists(atPath: url.path)
-
-        if hadOriginal {
-            try? removeItemIfExists(backupURL, fileManager: fileManager)
-            try fileManager.copyItem(at: url, to: backupURL)
-        }
-
-        do {
-            try data.write(to: url, options: .atomic)
-            if hadOriginal {
-                try? removeItemIfExists(backupURL, fileManager: fileManager)
-            }
-        } catch {
-            if hadOriginal {
-                try? removeItemIfExists(url, fileManager: fileManager)
-                try? fileManager.moveItem(at: backupURL, to: url)
-            } else {
-                try? removeItemIfExists(url, fileManager: fileManager)
-            }
-            throw error
-        }
-    }
 }

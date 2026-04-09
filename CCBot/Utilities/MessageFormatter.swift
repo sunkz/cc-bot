@@ -10,6 +10,8 @@ enum MessageFormatter {
         case warning
     }
 
+    private static let whitespaceRegex = try! NSRegularExpression(pattern: #"\s+"#)
+
     static func prepare(_ text: String, maxLength: Int = Constants.messageTruncateLength) -> String {
         String(stripMarkdown(text).prefix(maxLength))
     }
@@ -35,8 +37,9 @@ enum MessageFormatter {
 
     private static func normalizeInline(_ text: String) -> String {
         let stripped = stripMarkdown(text)
-        return stripped
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        let range = NSRange(stripped.startIndex..<stripped.endIndex, in: stripped)
+        return whitespaceRegex
+            .stringByReplacingMatches(in: stripped, range: range, withTemplate: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
