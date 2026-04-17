@@ -28,7 +28,6 @@
 		D01A76690ADFE61FDEA115E7 /* CodexNotifyInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 311CBAC2C072FDA70C29F999 /* CodexNotifyInstallerTests.swift */; };
 		D58F0BF0491693B6688F99A7 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCF32A158EB479B567D56BA8 /* UpdateChecker.swift */; };
 		DE49F368ABC0A766A5354190 /* HookServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89789840ABD02BD8EB5EEA0 /* HookServerTests.swift */; };
-		EB1BEA9FB863DAA0C5056F16 /* ACPProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACE47BC88A8AA2B2EC3F016 /* ACPProxy.swift */; };
 		EB84B0894B894D2E31BDB057 /* HookInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A5F6AD5A9133F427792E8D1 /* HookInstallerTests.swift */; };
 		F716F326490FF7B2E6A2E1EE /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB2A78A71A901104A051FB84 /* MenuBarView.swift */; };
 /* End PBXBuildFile section */
@@ -55,7 +54,6 @@
 		374ED3297227ACEE4ED4A327 /* StringUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StringUtils.swift; sourceTree = "<group>"; };
 		3A5F6AD5A9133F427792E8D1 /* HookInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookInstallerTests.swift; sourceTree = "<group>"; };
 		3BA3A95E4029E5CB0E8094E0 /* NotificationPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferencesTests.swift; sourceTree = "<group>"; };
-		4ACE47BC88A8AA2B2EC3F016 /* ACPProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACPProxy.swift; sourceTree = "<group>"; };
 		68AA225AC4728D71C5A6EF4C /* TelegramBot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramBot.swift; sourceTree = "<group>"; };
 		6B49F0D7238A29B8133DDF7F /* CodexNotifyInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexNotifyInstaller.swift; sourceTree = "<group>"; };
 		700209C23AABF3CA3E6257A9 /* HookServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookServer.swift; sourceTree = "<group>"; };
@@ -129,7 +127,6 @@
 		9F40424EAC00D3F1AE568E3D /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				4ACE47BC88A8AA2B2EC3F016 /* ACPProxy.swift */,
 				AB542F27C2BC4323F42EF32E /* CCGUIWatcher.swift */,
 				700209C23AABF3CA3E6257A9 /* HookServer.swift */,
 				C8E25B4511CE8B72819DDE0D /* SystemNotifier.swift */,
@@ -249,7 +246,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EB1BEA9FB863DAA0C5056F16 /* ACPProxy.swift in Sources */,
 				156FA150E6990531DFBC5454 /* AppState.swift in Sources */,
 				A6D41D58D921438A1F66B8F1 /* CCBotApp.swift in Sources */,
 				C5E4649F8F1EA8CC8348962D /* CCGUIWatcher.swift in Sources */,

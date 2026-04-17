@@ -30,9 +30,6 @@ final class AppState: ObservableObject {
         do { try CodexNotifyInstaller.updateScriptIfInstalled() }
         catch { log.error("Codex notify update failed: \(error)") }
 
-        do { try ACPProxy.updateIfInstalled() }
-        catch { log.error("ACP proxy update failed: \(error)") }
-
         hookServer.start(telegram: telegramBot)
 
         if UserDefaults.standard.object(forKey: "ccguiWatcherEnabled") as? Bool ?? true {

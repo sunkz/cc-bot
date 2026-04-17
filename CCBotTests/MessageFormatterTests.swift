@@ -33,7 +33,11 @@ final class MessageFormatterTests: XCTestCase {
     func testNotificationTitleByKind() {
         XCTAssertEqual(
             MessageFormatter.notificationTitle(kind: .completion, source: "Codex", project: "demo"),
-            "✅ [Codex] [demo] 已完成"
+            "✅ [Codex] [demo] 本轮完成"
+        )
+        XCTAssertEqual(
+            MessageFormatter.notificationTitle(kind: .completion, source: "Claude", project: "demo"),
+            "✅ [Claude] [demo] 已完成"
         )
         XCTAssertEqual(
             MessageFormatter.notificationTitle(kind: .approval, source: "Claude", project: "demo"),
@@ -51,5 +55,13 @@ final class MessageFormatterTests: XCTestCase {
         let result = MessageFormatter.notificationBody(detail: detail, maxDetailLength: 40)
         XCTAssertTrue(result.contains("…"))
         XCTAssertTrue(result.hasSuffix("command"))
+    }
+
+    func testPrepareCodexDetailSummarizesSuggestionsJSON() {
+        let json = #"{"suggestions":[{"title":"Continue thread on run.sh 变慢排查","description":"这个项目最近唯一的强信号就是你今天在追 run.sh 从 很快 变成 很慢。继续原因。"}]}"#
+        let result = MessageFormatter.prepareCodexDetail(json)
+
+        XCTAssertTrue(result.contains("建议：Continue thread on run.sh 变慢排查"))
+        XCTAssertFalse(result.contains(#""suggestions""#))
     }
 }

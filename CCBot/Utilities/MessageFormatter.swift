@@ -19,7 +19,8 @@ enum MessageFormatter {
     static func notificationTitle(kind: NotificationKind, source: String, project: String) -> String {
         switch kind {
         case .completion:
-            return "✅ [\(source)] [\(project)] 已完成"
+            let status = (source == Constants.sourceCodex) ? "本轮完成" : "已完成"
+            return "✅ [\(source)] [\(project)] \(status)"
         case .approval:
             return "⏳ [\(source)] [\(project)] 待确认"
         case .input:
@@ -33,6 +34,16 @@ enum MessageFormatter {
 
     static func notificationBody(detail: String, maxDetailLength: Int = 140) -> String {
         smartTruncate(normalizeInline(detail), maxLength: maxDetailLength)
+    }
+
+    static func prepareCodexDetail(_ text: String, maxLength: Int = Constants.messageTruncateLength) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        if let summary = summarizeCodexStructuredPayload(trimmed) {
+            return String(stripMarkdown(summary).prefix(maxLength))
+        }
+        return prepare(trimmed, maxLength: maxLength)
     }
 
     private static func normalizeInline(_ text: String) -> String {
@@ -50,5 +61,61 @@ enum MessageFormatter {
         let head = String(text.prefix(prefixCount))
         let tail = String(text.suffix(suffixCount))
         return "\(head)…\(tail)"
+    }
+
+    private static func summarizeCodexStructuredPayload(_ text: String) -> String? {
+        guard let first = text.first, first == "{" || first == "[" else { return nil }
+        guard let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data)
+        else { return nil }
+        return summarizeJSONValue(object)
+    }
+
+    private static func summarizeJSONValue(_ value: Any) -> String? {
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        if let dict = value as? [String: Any] {
+            if let suggestions = dict["suggestions"] as? [[String: Any]] {
+                let items = suggestions.prefix(2).compactMap(suggestionSummary)
+                if !items.isEmpty {
+                    return items.joined(separator: "；")
+                }
+            }
+
+            for key in ["message", "text", "title", "description"] {
+                if let text = summarizeJSONValue(dict[key] as Any) {
+                    return text
+                }
+            }
+            return nil
+        }
+
+        if let array = value as? [Any] {
+            let items = array.prefix(2).compactMap(summarizeJSONValue)
+            return items.isEmpty ? nil : items.joined(separator: "；")
+        }
+
+        return nil
+    }
+
+    private static func suggestionSummary(_ suggestion: [String: Any]) -> String? {
+        let title = (suggestion["title"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let description = (suggestion["description"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if !title.isEmpty, !description.isEmpty {
+            return "建议：\(title) - \(description)"
+        }
+        if !title.isEmpty {
+            return "建议：\(title)"
+        }
+        if !description.isEmpty {
+            return "建议：\(description)"
+        }
+        return nil
     }
 }

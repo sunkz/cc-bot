@@ -15,7 +15,6 @@ struct MenuBarView: View {
     @State private var tokenInput: String = ""
     @State private var hookInstalled = HookInstaller.isInstalled()
     @State private var codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
-    @State private var acpProxyInstalled = ACPProxy.isInstalled()
     @State private var alertMessage: String?
     @State private var tokenPersistTask: Task<Void, Never>?
 
@@ -93,7 +92,6 @@ struct MenuBarView: View {
             tokenInput = telegramBot.token
             hookInstalled = HookInstaller.isInstalled()
             codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
-            acpProxyInstalled = ACPProxy.isInstalled()
             await updateChecker.check()
         }
         .alert("CCBot", isPresented: .init(
@@ -232,26 +230,6 @@ struct MenuBarView: View {
                     }
             }
 
-            // ACP Proxy
-            HStack {
-                Circle()
-                    .fill(acpProxyInstalled ? .green : .gray)
-                    .frame(width: 8, height: 8)
-                Text("ACP Proxy")
-                    .font(.callout)
-                Spacer()
-                Button(acpProxyInstalled ? "卸载" : "安装") {
-                    toggleACPProxy()
-                }
-                .controlSize(.small)
-            }
-
-            if acpProxyInstalled {
-                Text("~/.claude/hooks/cc-bot-acp-proxy.mjs")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
         }
     }
 
@@ -262,19 +240,6 @@ struct MenuBarView: View {
             ccguiWatcher.start(telegram: AppState.shared.telegramBot)
         } else {
             ccguiWatcher.stop()
-        }
-    }
-
-    private func toggleACPProxy() {
-        do {
-            if acpProxyInstalled {
-                try ACPProxy.uninstall()
-            } else {
-                try ACPProxy.install()
-            }
-            acpProxyInstalled = ACPProxy.isInstalled()
-        } catch {
-            alertMessage = error.localizedDescription
         }
     }
 

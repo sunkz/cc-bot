@@ -369,13 +369,13 @@ final class HookServer: ObservableObject {
     private func codexBody(from json: [String: Any]) -> String {
         let lastMessage = stringValue(in: json, key: "last-assistant-message")
         if !lastMessage.isEmpty {
-            return MessageFormatter.prepare(lastMessage)
+            return MessageFormatter.prepareCodexDetail(lastMessage)
         }
 
         if let messages = json["input-messages"] as? [String] {
             let joined = messages.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
             if !joined.isEmpty {
-                return MessageFormatter.prepare(joined)
+                return MessageFormatter.prepareCodexDetail(joined)
             }
         }
 

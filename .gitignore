@@ -27,6 +27,10 @@ DerivedData/
 # Claude Code
 .claude/
 
+# Superpowers docs
+docs/superpowers/
+.superpowers/
+
 # Logs & temp
 *.log
 *.profraw
