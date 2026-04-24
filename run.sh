@@ -58,7 +58,7 @@ cmd_run() {
     done
 
     echo "=> Launching ${APP_NAME}..."
-    open --env CCBOT_LOCAL_VERSION_SUFFIX=local "$APP_PATH"
+    open "$APP_PATH"
 }
 
 cmd_test() {

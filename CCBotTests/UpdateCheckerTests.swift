@@ -60,6 +60,19 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertFalse(checker.hasUpdate)
     }
 
+    func testRunScriptDoesNotInjectLocalVersionSuffixWhenLaunchingApp() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let scriptURL = repoRoot.appendingPathComponent("run.sh")
+        let script = try String(contentsOf: scriptURL, encoding: .utf8)
+
+        XCTAssertFalse(
+            script.contains("open --env CCBOT_LOCAL_VERSION_SUFFIX=local"),
+            "run.sh 本地启动时不应再强制附加 -local 版本后缀"
+        )
+    }
+
     @MainActor
     func testCheckSkipsNetworkWhenRecentAutomaticCheckExists() async {
         let url = URL(string: "https://api.github.com/repos/sunkz/cc-bot/releases/latest")!

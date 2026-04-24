@@ -58,30 +58,14 @@ struct MenuBarView: View {
             Divider().padding(.vertical, 6)
 
             // 版本 & 获取更新 & 退出
-            HStack {
-                Link(destination: Constants.projectHomepageURL) {
-                    HStack(spacing: 5) {
-                        Image(Constants.projectHomepageIconAssetName)
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 13, height: 13)
-                        Text(Constants.projectHomepageLinkTitle)
-                            .font(.caption.weight(.medium))
-                    }
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.primary.opacity(0.08), in: Capsule())
-                    .overlay {
-                        Capsule()
-                            .strokeBorder(.quaternary, lineWidth: 1)
-                    }
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .help("打开 GitHub 项目主页")
-                .accessibilityLabel("打开 GitHub 项目主页")
+            HStack(alignment: .center, spacing: 8) {
+                footerActionButton(
+                    title: Constants.projectHomepageLinkTitle,
+                    iconAssetName: Constants.projectHomepageIconAssetName,
+                    help: "打开 GitHub 项目主页",
+                    accessibilityLabel: "打开 GitHub 项目主页",
+                    action: openProjectHomepage
+                )
                 if updateChecker.hasUpdate, let latest = updateChecker.latestVersion {
                     HStack(spacing: 3) {
                         Text("v\(updateChecker.currentVersion)")
@@ -96,11 +80,8 @@ struct MenuBarView: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
-                Spacer()
-                Button("退出") {
-                    NSApplication.shared.terminate(nil)
-                }
-                .controlSize(.small)
+                Spacer(minLength: 0)
+                footerActionButton(title: "退出", action: terminateApp)
             }
             if let updateError = updateChecker.lastErrorMessage {
                 Text(updateError)
@@ -236,6 +217,14 @@ struct MenuBarView: View {
         }
     }
 
+    private func openProjectHomepage() {
+        NSWorkspace.shared.open(Constants.projectHomepageURL)
+    }
+
+    private func terminateApp() {
+        NSApplication.shared.terminate(nil)
+    }
+
     @ViewBuilder
     private func hookRow(
         title: String,
@@ -284,6 +273,34 @@ struct MenuBarView: View {
                 .padding(.leading, 14)
             }
         }
+    }
+
+    private func footerActionButton(
+        title: String,
+        iconAssetName: String? = nil,
+        help: String? = nil,
+        accessibilityLabel: String? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let iconAssetName {
+                    Image(iconAssetName)
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 11, height: 11)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(title)
+                    .font(.caption.weight(.medium))
+            }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .help(help ?? title)
+        .accessibilityLabel(accessibilityLabel ?? title)
     }
 
     private func toggleHook() {
