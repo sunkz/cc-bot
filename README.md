@@ -11,8 +11,9 @@
 
 - **系统通知** — 任务完成、需要确认时弹出 macOS 原生通知
 - **Telegram Bot** — 同步推送到 Telegram，手机也能收到提醒
-- **Codex Notify** — 接入 `~/.codex/config.toml` 的 `notify` 回调，推送 Codex CLI 完成与交互提醒
+- **Codex Hook** — Codex 完成类事件走 `~/.codex/config.toml` 的 `notify`，审批类事件走 `~/.codex/hooks.json` 的 `PermissionRequest` hook
 - **CC GUI 监听** — 监听 IDEA 等 JetBrains IDE 中 CC GUI 插件的权限请求，弹出通知
+- **自动更新检查** — 启动后自动检查 GitHub Releases，24 小时内最多请求一次
 - **菜单栏控制** — 一键开关各通知渠道、安装/卸载 Hook
 - **原生系统样式** — 菜单栏界面使用 macOS 原生 `SwiftUI/AppKit` 控件，在不同 macOS 版本上会自动呈现对应系统风格
 
@@ -20,12 +21,12 @@
 
 ```
 Claude Code ──Hook──▶ HookServer(:62400) ──▶ 系统通知 / Telegram
-Codex CLI ──notify──▶ HookServer(:62400) ──▶ 系统通知 / Telegram
+Codex CLI ──notify / PermissionRequest──▶ HookServer(:62400) ──▶ 系统通知 / Telegram
 CC GUI 插件 ──文件监听──▶ CCGUIWatcher ──▶ 系统通知 / Telegram
 ```
 
 1. **HookServer** — 在本地 `62400` 端口启动 TCP 服务，接收 Claude Code Hook 发来的 JSON 请求
-2. **Codex Notify Installer** — 写入 `~/.codex/hooks/cc-bot-notify.sh`，并把它注册到 `~/.codex/config.toml` 的 `notify`
+2. **Codex Hook Installer** — 写入 Codex 脚本，更新 `~/.codex/config.toml`、`~/.codex/hooks.json`，把完成/交互提醒和审批提醒都接入本地 HookServer
 3. **CCGUIWatcher** — 监听 CC GUI 插件的文件系统 IPC 目录，检测权限请求文件
 
 ## 安装
@@ -61,11 +62,14 @@ CC GUI 插件 ──文件监听──▶ CCGUIWatcher ──▶ 系统通知 / 
 - 写入 Hook 脚本到 `~/.claude/hooks/`
 - 将 Hook 注册到 `~/.claude/settings.json`
 
-### Codex Notify
+### Codex Hook
 
 点击菜单栏中的 **安装** 按钮，CCBot 会自动：
 - 写入脚本到 `~/.codex/hooks/cc-bot-notify.sh`
+- 写入脚本到 `~/.codex/hooks/cc-bot-permission-request.sh`
 - 将 `notify = ["bash", ".../cc-bot-notify.sh"]` 写入 `~/.codex/config.toml`
+- 在 `~/.codex/config.toml` 的 `[features]` 中写入 `codex_hooks = true`
+- 在 `~/.codex/hooks.json` 中注册 `PermissionRequest` hook，用于推送审批通知
 
 ### Telegram Bot
 

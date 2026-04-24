@@ -15,6 +15,7 @@ struct MenuBarView: View {
     @State private var tokenInput: String = ""
     @State private var hookInstalled = HookInstaller.isInstalled()
     @State private var codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
+    @State private var hookPathDisclosureState = HookPathDisclosureState()
     @State private var alertMessage: String?
     @State private var tokenPersistTask: Task<Void, Never>?
 
@@ -26,6 +27,8 @@ struct MenuBarView: View {
 
     private let codexHookPaths = [
         "~/.codex/hooks/cc-bot-notify.sh",
+        "~/.codex/hooks/cc-bot-permission-request.sh",
+        "~/.codex/hooks.json",
         "~/.codex/config.toml",
     ]
 
@@ -56,8 +59,29 @@ struct MenuBarView: View {
 
             // 版本 & 获取更新 & 退出
             HStack {
-                Link("获取更新 ↗", destination: URL(string: "https://github.com/sunkz/cc-bot/releases")!)
-                    .font(.callout)
+                Link(destination: Constants.projectHomepageURL) {
+                    HStack(spacing: 5) {
+                        Image(Constants.projectHomepageIconAssetName)
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 13, height: 13)
+                        Text(Constants.projectHomepageLinkTitle)
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.08), in: Capsule())
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(.quaternary, lineWidth: 1)
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("打开 GitHub 项目主页")
+                .accessibilityLabel("打开 GitHub 项目主页")
                 if updateChecker.hasUpdate, let latest = updateChecker.latestVersion {
                     HStack(spacing: 3) {
                         Text("v\(updateChecker.currentVersion)")
@@ -104,6 +128,7 @@ struct MenuBarView: View {
         }
         .onDisappear {
             tokenPersistTask?.cancel()
+            hookPathDisclosureState.reset()
             telegramBot.saveToken(tokenInput)
         }
     }
@@ -159,53 +184,21 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("CLI 集成").font(.caption).foregroundStyle(.tertiary)
 
-            HStack {
-                Circle()
-                    .fill(hookInstalled ? .green : .gray)
-                    .frame(width: 8, height: 8)
-                Text("Claude Code Hook")
-                    .font(.callout)
+            hookRow(
+                title: "Claude Code Hook",
+                isInstalled: hookInstalled,
+                disclosureKind: .claude,
+                paths: claudeHookPaths,
+                action: toggleHook
+            )
 
-                Spacer()
-
-                Button(hookInstalled ? "卸载" : "安装") {
-                    toggleHook()
-                }
-                .controlSize(.small)
-            }
-
-            if hookInstalled {
-                ForEach(claudeHookPaths, id: \.self) { path in
-                    Text(path)
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
-
-            HStack {
-                Circle()
-                    .fill(codexNotifyInstalled ? .green : .gray)
-                    .frame(width: 8, height: 8)
-                Text("Codex Notify")
-                    .font(.callout)
-
-                Spacer()
-
-                Button(codexNotifyInstalled ? "卸载" : "安装") {
-                    toggleCodexNotify()
-                }
-                .controlSize(.small)
-            }
-
-            if codexNotifyInstalled {
-                ForEach(codexHookPaths, id: \.self) { path in
-                    Text(path)
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
+            hookRow(
+                title: "Codex Hook",
+                isInstalled: codexNotifyInstalled,
+                disclosureKind: .codex,
+                paths: codexHookPaths,
+                action: toggleCodexNotify
+            )
         }
     }
 
@@ -243,6 +236,56 @@ struct MenuBarView: View {
         }
     }
 
+    @ViewBuilder
+    private func hookRow(
+        title: String,
+        isInstalled: Bool,
+        disclosureKind: HookPathDisclosureKind,
+        paths: [String],
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Circle()
+                    .fill(isInstalled ? .green : .gray)
+                    .frame(width: 8, height: 8)
+                Text(title)
+                    .font(.callout)
+
+                Spacer()
+
+                if isInstalled {
+                    Button {
+                        hookPathDisclosureState.toggle(disclosureKind)
+                    } label: {
+                        Image(systemName: hookPathDisclosureState.isExpanded(disclosureKind) ? "chevron.down" : "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(hookPathDisclosureState.isExpanded(disclosureKind) ? "收起安装路径" : "展开安装路径")
+                }
+
+                Button(isInstalled ? "卸载" : "安装") {
+                    action()
+                }
+                .controlSize(.small)
+            }
+
+            if isInstalled && hookPathDisclosureState.isExpanded(disclosureKind) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(paths, id: \.self) { path in
+                        Text(path)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.leading, 14)
+            }
+        }
+    }
+
     private func toggleHook() {
         do {
             if hookInstalled {
@@ -251,6 +294,9 @@ struct MenuBarView: View {
                 try HookInstaller.install()
             }
             hookInstalled = HookInstaller.isInstalled()
+            if !hookInstalled {
+                hookPathDisclosureState.setExpanded(.claude, isExpanded: false)
+            }
         } catch HookInstaller.InstallError.claudeNotInstalled {
             alertMessage = "未检测到 ~/.claude 目录，请先安装 Claude Code"
         } catch HookInstaller.InstallError.invalidSettingsJSON {
@@ -268,13 +314,47 @@ struct MenuBarView: View {
                 try CodexNotifyInstaller.install()
             }
             codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
+            if !codexNotifyInstalled {
+                hookPathDisclosureState.setExpanded(.codex, isExpanded: false)
+            }
         } catch CodexNotifyInstaller.InstallError.codexNotInstalled {
             alertMessage = "未检测到 ~/.codex 目录，请先安装 Codex"
         } catch CodexNotifyInstaller.InstallError.notifyAlreadyConfigured {
             alertMessage = "检测到 ~/.codex/config.toml 已有 notify 配置，请先手动处理现有配置"
+        } catch CodexNotifyInstaller.InstallError.invalidHooksJSON {
+            alertMessage = "检测到 ~/.codex/hooks.json 不是合法 JSON，请先手动修复后再操作"
         } catch {
             alertMessage = error.localizedDescription
         }
     }
 
+}
+
+enum HookPathDisclosureKind: Hashable {
+    case claude
+    case codex
+}
+
+struct HookPathDisclosureState {
+    private var expandedKinds: Set<HookPathDisclosureKind> = []
+
+    func isExpanded(_ kind: HookPathDisclosureKind) -> Bool {
+        expandedKinds.contains(kind)
+    }
+
+    mutating func toggle(_ kind: HookPathDisclosureKind) {
+        setExpanded(kind, isExpanded: !isExpanded(kind))
+    }
+
+    mutating func setExpanded(_ kind: HookPathDisclosureKind, isExpanded: Bool) {
+        if isExpanded {
+            expandedKinds.insert(kind)
+        } else {
+            expandedKinds.remove(kind)
+        }
+    }
+
+    mutating func reset() {
+        expandedKinds.removeAll()
+    }
 }

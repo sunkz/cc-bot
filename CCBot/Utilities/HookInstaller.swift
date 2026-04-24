@@ -2,10 +2,27 @@
 import Foundation
 
 struct HookInstaller {
-    static let hooksDir = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".claude/hooks")
-    static let settingsPath = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".claude/settings.json")
+    private struct Paths {
+        let claudeDir: URL
+        let hooksDir: URL
+        let settingsPath: URL
+        let notificationPath: URL
+        let stopPath: URL
+        let legacyPreToolUsePath: URL
+    }
+
+    private static func paths(for homeDirectory: URL) -> Paths {
+        let claudeDir = homeDirectory.appendingPathComponent(".claude", isDirectory: true)
+        let hooksDir = claudeDir.appendingPathComponent("hooks", isDirectory: true)
+        return Paths(
+            claudeDir: claudeDir,
+            hooksDir: hooksDir,
+            settingsPath: claudeDir.appendingPathComponent("settings.json"),
+            notificationPath: hooksDir.appendingPathComponent("cc-bot-notification.sh"),
+            stopPath: hooksDir.appendingPathComponent("cc-bot-stop.sh"),
+            legacyPreToolUsePath: hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh")
+        )
+    }
 
     static var notificationScript: String {
         """
@@ -39,30 +56,30 @@ struct HookInstaller {
         case invalidSettingsJSON
     }
 
-    static func install() throws {
-        let claudeSettings = settingsPath
-        let fm = FileManager.default
+    static func install(
+        fileManager fm: FileManager = .default,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) throws {
+        let paths = paths(for: homeDirectory)
 
-        guard fm.fileExists(atPath: fm.homeDirectoryForCurrentUser.appendingPathComponent(".claude").path) else {
+        guard fm.fileExists(atPath: paths.claudeDir.path) else {
             throw InstallError.claudeNotInstalled
         }
 
-        // Write hook scripts
-        try fm.createDirectory(at: hooksDir, withIntermediateDirectories: true)
-        let notificationPath = hooksDir.appendingPathComponent("cc-bot-notification.sh")
-        let stopPath = hooksDir.appendingPathComponent("cc-bot-stop.sh")
-
-        try notificationScript.write(to: notificationPath, atomically: true, encoding: .utf8)
-        try stopScript.write(to: stopPath, atomically: true, encoding: .utf8)
-
-        // chmod +x
-        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: notificationPath.path)
-        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stopPath.path)
-
-        // Merge into settings.json
-        let existing = (try? Data(contentsOf: claudeSettings)) ?? Data("{}".utf8)
+        let existing = (try? Data(contentsOf: paths.settingsPath)) ?? Data("{}".utf8)
         let merged = try mergeHooks(into: existing)
-        try FileUtilities.writeWithBackupRollback(merged, to: claudeSettings, fileManager: fm)
+        let snapshots = try FileUtilities.captureSnapshots(
+            for: [paths.notificationPath, paths.stopPath, paths.settingsPath],
+            fileManager: fm
+        )
+
+        do {
+            try writeScripts(fileManager: fm, paths: paths)
+            try FileUtilities.writeWithBackupRollback(merged, to: paths.settingsPath, fileManager: fm)
+        } catch {
+            try? FileUtilities.restoreSnapshots(snapshots, fileManager: fm)
+            throw error
+        }
     }
 
     static func mergeHooks(into data: Data) throws -> Data {
@@ -91,22 +108,33 @@ struct HookInstaller {
         return try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
     }
 
-    static func uninstall() throws {
-        let fm = FileManager.default
+    static func uninstall(
+        fileManager fm: FileManager = .default,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) throws {
+        let paths = paths(for: homeDirectory)
+        let cleanedSettings: Data? =
+            if fm.fileExists(atPath: paths.settingsPath.path) {
+                try removeHooks(from: Data(contentsOf: paths.settingsPath))
+            } else {
+                nil
+            }
+        let snapshots = try FileUtilities.captureSnapshots(
+            for: [paths.notificationPath, paths.stopPath, paths.legacyPreToolUsePath, paths.settingsPath],
+            fileManager: fm
+        )
 
-        // Remove hook scripts
-        let notificationPath = hooksDir.appendingPathComponent("cc-bot-notification.sh")
-        let stopPath = hooksDir.appendingPathComponent("cc-bot-stop.sh")
-        try FileUtilities.removeItemIfExists(notificationPath, fileManager: fm)
-        try FileUtilities.removeItemIfExists(stopPath, fileManager: fm)
-        // Clean up legacy PreToolUse script
-        try FileUtilities.removeItemIfExists(hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh"), fileManager: fm)
-
-        // Remove hook entries from settings.json
-        guard fm.fileExists(atPath: settingsPath.path) else { return }
-        let existing = try Data(contentsOf: settingsPath)
-        let cleaned = try removeHooks(from: existing)
-        try FileUtilities.writeWithBackupRollback(cleaned, to: settingsPath, fileManager: fm)
+        do {
+            try FileUtilities.removeItemIfExists(paths.notificationPath, fileManager: fm)
+            try FileUtilities.removeItemIfExists(paths.stopPath, fileManager: fm)
+            try FileUtilities.removeItemIfExists(paths.legacyPreToolUsePath, fileManager: fm)
+            if let cleanedSettings {
+                try FileUtilities.writeWithBackupRollback(cleanedSettings, to: paths.settingsPath, fileManager: fm)
+            }
+        } catch {
+            try? FileUtilities.restoreSnapshots(snapshots, fileManager: fm)
+            throw error
+        }
     }
 
     static func removeHooks(from data: Data) throws -> Data {
@@ -146,25 +174,35 @@ struct HookInstaller {
         return try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
     }
 
-    static func isInstalled() -> Bool {
-        let fm = FileManager.default
-        let notificationPath = hooksDir.appendingPathComponent("cc-bot-notification.sh")
-        return fm.fileExists(atPath: notificationPath.path)
+    static func isInstalled(
+        fileManager fm: FileManager = .default,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Bool {
+        let paths = paths(for: homeDirectory)
+        guard fm.fileExists(atPath: paths.notificationPath.path),
+              fm.fileExists(atPath: paths.stopPath.path),
+              let settingsData = try? Data(contentsOf: paths.settingsPath)
+        else { return false }
+        return hasRequiredHookEntries(in: settingsData)
     }
 
     /// Overwrite hook scripts with latest version if already installed.
-    static func updateScriptsIfInstalled() throws {
-        guard isInstalled() else { return }
-        let fm = FileManager.default
-        let paths: [(URL, String)] = [
-            (hooksDir.appendingPathComponent("cc-bot-notification.sh"), notificationScript),
-            (hooksDir.appendingPathComponent("cc-bot-stop.sh"), stopScript),
-        ]
-        // Clean up legacy PreToolUse script
-        try FileUtilities.removeItemIfExists(hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh"), fileManager: fm)
-        for (url, content) in paths {
-            try content.write(to: url, atomically: true, encoding: .utf8)
-            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    static func updateScriptsIfInstalled(
+        fileManager fm: FileManager = .default,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) throws {
+        guard isInstalled(fileManager: fm, homeDirectory: homeDirectory) else { return }
+        let paths = paths(for: homeDirectory)
+        let snapshots = try FileUtilities.captureSnapshots(
+            for: [paths.notificationPath, paths.stopPath, paths.legacyPreToolUsePath],
+            fileManager: fm
+        )
+        do {
+            try FileUtilities.removeItemIfExists(paths.legacyPreToolUsePath, fileManager: fm)
+            try writeScripts(fileManager: fm, paths: paths)
+        } catch {
+            try? FileUtilities.restoreSnapshots(snapshots, fileManager: fm)
+            throw error
         }
     }
 
@@ -182,6 +220,30 @@ struct HookInstaller {
             throw InstallError.invalidSettingsJSON
         }
         return json
+    }
+
+    private static func writeScripts(fileManager fm: FileManager, paths: Paths) throws {
+        try fm.createDirectory(at: paths.hooksDir, withIntermediateDirectories: true)
+        try notificationScript.write(to: paths.notificationPath, atomically: true, encoding: .utf8)
+        try stopScript.write(to: paths.stopPath, atomically: true, encoding: .utf8)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: paths.notificationPath.path)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: paths.stopPath.path)
+    }
+
+    private static func hasRequiredHookEntries(in data: Data) -> Bool {
+        guard let json = try? parseSettingsJSON(from: data),
+              let hooks = json["hooks"] as? [String: Any]
+        else { return false }
+        return hasHookCommand(in: hooks["Notification"], command: "bash ~/.claude/hooks/cc-bot-notification.sh")
+            && hasHookCommand(in: hooks["Stop"], command: "bash ~/.claude/hooks/cc-bot-stop.sh")
+    }
+
+    private static func hasHookCommand(in value: Any?, command: String) -> Bool {
+        let entries = value as? [[String: Any]] ?? []
+        return entries.contains { entry in
+            let hooksList = entry["hooks"] as? [[String: Any]] ?? []
+            return hooksList.contains { ($0["command"] as? String) == command }
+        }
     }
 
 }

@@ -7,8 +7,10 @@ struct CCBotApp: App {
 
     init() {
         // Start services immediately on launch, not when menu is opened
-        DispatchQueue.main.async {
-            AppState.shared.start()
+        if !RuntimeEnvironment.isRunningTests() {
+            DispatchQueue.main.async {
+                AppState.shared.start()
+            }
         }
     }
 

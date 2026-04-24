@@ -4,6 +4,9 @@ import Foundation
 enum Constants {
     static let serverPort: UInt16 = 62400
     static let messageTruncateLength = 200
+    static let projectHomepageIconAssetName = "GitHubMark"
+    static let projectHomepageLinkTitle = "主页"
+    static let projectHomepageURL = URL(string: "https://github.com/sunkz/cc-bot")!
 
     // MARK: - Notification source names
     static let sourceClaude = "Claude"
@@ -38,5 +41,11 @@ enum Constants {
         try? new.write(to: path, atomically: true, encoding: .utf8)
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
         return new
+    }
+}
+
+enum RuntimeEnvironment {
+    static func isRunningTests(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        environment["XCTestConfigurationFilePath"] != nil
     }
 }

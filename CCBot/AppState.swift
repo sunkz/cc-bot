@@ -31,6 +31,9 @@ final class AppState: ObservableObject {
         catch { log.error("Codex notify update failed: \(error)") }
 
         hookServer.start(telegram: telegramBot)
+        Task { [updateChecker] in
+            await updateChecker.check()
+        }
 
         if UserDefaults.standard.object(forKey: "ccguiWatcherEnabled") as? Bool ?? true {
             ccguiWatcher.start(telegram: telegramBot)

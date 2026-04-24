@@ -1,6 +1,13 @@
 import Foundation
 
 enum FileUtilities {
+    struct Snapshot {
+        let url: URL
+        let existed: Bool
+        let data: Data?
+        let permissions: NSNumber?
+    }
+
     static func removeItemIfExists(_ url: URL, fileManager: FileManager = .default) throws {
         do {
             try fileManager.removeItem(at: url)
@@ -34,6 +41,37 @@ enum FileUtilities {
                 try? removeItemIfExists(url, fileManager: fileManager)
             }
             throw error
+        }
+    }
+
+    static func captureSnapshots(for urls: [URL], fileManager: FileManager = .default) throws -> [Snapshot] {
+        try urls.map { url in
+            guard fileManager.fileExists(atPath: url.path) else {
+                return Snapshot(url: url, existed: false, data: nil, permissions: nil)
+            }
+            let data = try Data(contentsOf: url)
+            let attrs = try? fileManager.attributesOfItem(atPath: url.path)
+            let permissions = attrs?[.posixPermissions] as? NSNumber
+            return Snapshot(url: url, existed: true, data: data, permissions: permissions)
+        }
+    }
+
+    static func restoreSnapshots(_ snapshots: [Snapshot], fileManager: FileManager = .default) throws {
+        for snapshot in snapshots {
+            if snapshot.existed {
+                try fileManager.createDirectory(
+                    at: snapshot.url.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                if let data = snapshot.data {
+                    try data.write(to: snapshot.url, options: .atomic)
+                }
+                if let permissions = snapshot.permissions {
+                    try fileManager.setAttributes([.posixPermissions: permissions], ofItemAtPath: snapshot.url.path)
+                }
+            } else {
+                try removeItemIfExists(snapshot.url, fileManager: fileManager)
+            }
         }
     }
 }

@@ -10,6 +10,7 @@ struct PermissionRequestInfo: Sendable {
     let toolName: String
     let project: String
     let file: String
+    let detail: String?
 }
 
 // MARK: - File system monitor (non-actor-isolated, runs on global queue)
@@ -80,7 +81,8 @@ private final class DirectoryMonitor: @unchecked Sendable {
             let toolName = json["toolName"] as? String ?? "unknown"
             let cwd = json["cwd"] as? String ?? ""
             let project = cwd.split(separator: "/").last.map(String.init) ?? "unknown"
-            let info = PermissionRequestInfo(toolName: toolName, project: project, file: file)
+            let detail = Self.requestDetail(from: json, file: file)
+            let info = PermissionRequestInfo(toolName: toolName, project: project, file: file, detail: detail)
 
             log.notice("CC GUI permission request detected: \(toolName) in \(project)")
 
@@ -109,6 +111,41 @@ private final class DirectoryMonitor: @unchecked Sendable {
 
         if !immediateNotifications.isEmpty {
             onNewRequests(immediateNotifications)
+        }
+    }
+
+    private static func requestDetail(from json: [String: Any], file: String) -> String? {
+        if file.hasPrefix(Constants.prefixAskQuestion) {
+            return firstNonEmptyText(in: json, keys: ["question", "prompt", "message", "text"])
+        }
+        if file.hasPrefix(Constants.prefixPlanApproval) {
+            return firstNonEmptyText(in: json, keys: ["summary", "message", "plan", "text", "title"])
+        }
+        return firstNonEmptyText(in: json, keys: ["description", "command", "message", "prompt", "text"])
+    }
+
+    private static func firstNonEmptyText(in json: [String: Any], keys: [String]) -> String? {
+        for key in keys {
+            if let text = normalizedText(from: json[key]) {
+                return text
+            }
+        }
+        return nil
+    }
+
+    private static func normalizedText(from value: Any?) -> String? {
+        switch value {
+        case let text as String:
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        case let items as [String]:
+            let joined = items
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
+            return joined.isEmpty ? nil : joined
+        default:
+            return nil
         }
     }
 }
@@ -221,19 +258,9 @@ final class CCGUIWatcher: ObservableObject {
             return
         }
 
-        let kind: MessageFormatter.NotificationKind
-        let body: String
-
-        if req.file.hasPrefix(Constants.prefixAskQuestion) {
-            kind = .input
-            body = "AskUserQuestion"
-        } else if req.file.hasPrefix(Constants.prefixPlanApproval) {
-            kind = .approval
-            body = "ExitPlanMode"
-        } else {
-            kind = .approval
-            body = req.toolName
-        }
+        let content = Self.notificationContent(for: req)
+        let kind = content.kind
+        let body = content.body
 
         guard NotificationPreferences.systemEnabled || NotificationPreferences.telegramEnabled else { return }
         let source = Constants.sourceClaude
@@ -254,5 +281,15 @@ final class CCGUIWatcher: ObservableObject {
                 }
             }
         }
+    }
+
+    static func notificationContent(for req: PermissionRequestInfo) -> (kind: MessageFormatter.NotificationKind, body: String) {
+        if req.file.hasPrefix(Constants.prefixAskQuestion) {
+            return (.input, req.detail ?? "需要回答问题")
+        }
+        if req.file.hasPrefix(Constants.prefixPlanApproval) {
+            return (.approval, req.detail ?? "需要确认计划")
+        }
+        return (.approval, req.detail ?? "工具: \(req.toolName)")
     }
 }

@@ -19,9 +19,15 @@ struct NotificationDelivery {
     let kind: MessageFormatter.NotificationKind
     let source: String
     let project: String
+    let scopeKey: String
     let message: String
     let eventType: String
     let throttleKey: String?
+}
+
+private struct RecentInteractiveState {
+    let kind: MessageFormatter.NotificationKind
+    let recordedAt: Date
 }
 
 @MainActor
@@ -35,12 +41,17 @@ final class HookServer: ObservableObject {
     // Throttle: same (project, hookType) within interval skips notification
     private var lastNotifyTimes: [String: Date] = [:]
     private var recentMessageFingerprints: [String: Date] = [:]
+    private var recentInteractiveStates: [String: RecentInteractiveState] = [:]
     private let throttleInterval: TimeInterval = 3
     private let deduplicateInterval: TimeInterval = 6
+    private let completionSuppressionInterval: TimeInterval = 1
     private var restartAttempts = 0
     private let maxRestartAttempts = 3
     private nonisolated static let permissionRegex = try! NSRegularExpression(
         pattern: #"(?i)permission to use\s+([a-z0-9._/-]+)"#
+    )
+    private nonisolated static let inputRegex = try! NSRegularExpression(
+        pattern: #"(?i)\b(?:waiting for|awaiting|needs?|requires?)\s+(?:your\s+)?input\b|\binput required\b"#
     )
 
     func start(telegram: TelegramBot) {
@@ -242,6 +253,9 @@ final class HookServer: ObservableObject {
         case "/hook/codex-notify":
             handleCodexNotification(json: json)
             sendResponse(conn: conn, status: 200, body: "{}")
+        case "/hook/codex-permission-request":
+            handleCodexPermissionRequest(json: json)
+            sendResponse(conn: conn, status: 200, body: "{}")
         default:
             sendResponse(conn: conn, status: 404, body: "{}")
         }
@@ -265,9 +279,13 @@ final class HookServer: ObservableObject {
     }
 
     func shouldDeduplicate(source: String, project: String, eventType: String, message: String) -> Bool {
+        shouldDeduplicate(source: source, scopeKey: project, eventType: eventType, message: message)
+    }
+
+    func shouldDeduplicate(source: String, scopeKey: String, eventType: String, message: String) -> Bool {
         let normalized = normalizedMessage(message)
         guard !normalized.isEmpty else { return false }
-        let fingerprint = "\(source)|\(project)|\(eventType)|\(normalized)"
+        let fingerprint = "\(source)|\(scopeKey)|\(eventType)|\(normalized)"
         let now = Date()
 
         if recentMessageFingerprints.count > 300 {
@@ -283,6 +301,23 @@ final class HookServer: ObservableObject {
 
         recentMessageFingerprints[fingerprint] = now
         return false
+    }
+
+    func recordInteractiveStateIfNeeded(for delivery: NotificationDelivery, now: Date = Date()) {
+        pruneInteractiveStates(now: now)
+        guard delivery.kind == .approval || delivery.kind == .input else { return }
+        recentInteractiveStates[interactiveStateKey(for: delivery)] = RecentInteractiveState(
+            kind: delivery.kind,
+            recordedAt: now
+        )
+    }
+
+    func shouldSuppressCompletion(for delivery: NotificationDelivery, now: Date = Date()) -> Bool {
+        pruneInteractiveStates(now: now)
+        guard delivery.kind == .completion else { return false }
+        let key = interactiveStateKey(for: delivery)
+        guard let recent = recentInteractiveStates[key] else { return false }
+        return now.timeIntervalSince(recent.recordedAt) < completionSuppressionInterval
     }
 
     private func dispatchNotification(kind: MessageFormatter.NotificationKind, source: String, project: String, message: String) {
@@ -322,6 +357,14 @@ final class HookServer: ObservableObject {
         process(delivery: delivery)
     }
 
+    private func handleCodexPermissionRequest(json: [String: Any]) {
+        guard let delivery = makeCodexPermissionRequestDelivery(json: json) else {
+            log.notice("event=hook_ignored source=Codex type=permission-request")
+            return
+        }
+        process(delivery: delivery)
+    }
+
     private func handleStop(json: [String: Any]) {
         guard let delivery = makeStopDelivery(json: json) else { return }
         process(delivery: delivery)
@@ -332,18 +375,33 @@ final class HookServer: ObservableObject {
         let rawMessage = stringValue(in: json, key: "message")
         guard let normalizedMessage = nonEmptyMessage(rawMessage) else { return nil }
         let project = projectName(from: cwd)
-        let isPermission = normalizedMessage.contains("needs your permission")
-        let eventType = isPermission ? Constants.codexEventApproval : "notification"
-        let kind: MessageFormatter.NotificationKind = isPermission ? .approval : .info
-        let message = isPermission ? permissionSummary(from: normalizedMessage) : normalizedMessage
+        let kind = claudeNotificationKind(for: normalizedMessage)
+        let eventType: String
+        let message: String
+
+        switch kind {
+        case .approval:
+            eventType = Constants.codexEventApproval
+            message = permissionSummary(from: normalizedMessage)
+        case .input:
+            eventType = Constants.codexEventInput
+            message = normalizedMessage
+        case .info:
+            eventType = "notification"
+            message = normalizedMessage
+        case .completion:
+            eventType = "notification"
+            message = normalizedMessage
+        }
 
         return NotificationDelivery(
             kind: kind,
             source: Constants.sourceClaude,
             project: project,
+            scopeKey: notificationScopeKey(cwd: cwd, json: json, fallback: project),
             message: message,
             eventType: eventType,
-            throttleKey: isPermission ? nil : "notification:\(project)"
+            throttleKey: (kind == .approval || kind == .input) ? nil : "notification:\(project)"
         )
     }
 
@@ -365,8 +423,30 @@ final class HookServer: ObservableObject {
             kind: kind,
             source: Constants.sourceCodex,
             project: project,
+            scopeKey: notificationScopeKey(cwd: cwd, json: json, fallback: project),
             message: message,
             eventType: eventType,
+            throttleKey: nil
+        )
+    }
+
+    func makeCodexPermissionRequestDelivery(json: [String: Any]) -> NotificationDelivery? {
+        guard stringValue(in: json, key: "hook_event_name") == "PermissionRequest" else { return nil }
+
+        let cwd = stringValue(in: json, key: "cwd")
+        let project = projectName(from: cwd, fallback: Constants.sourceCodex)
+        let toolInput = json["tool_input"] as? [String: Any] ?? [:]
+        let description = stringValue(in: toolInput, key: "description")
+        let command = stringValue(in: toolInput, key: "command")
+        guard let detail = nonEmptyMessage(description) ?? nonEmptyMessage(command) else { return nil }
+
+        return NotificationDelivery(
+            kind: .approval,
+            source: Constants.sourceCodex,
+            project: project,
+            scopeKey: notificationScopeKey(cwd: cwd, json: json, fallback: project),
+            message: "命令: \(detail)",
+            eventType: Constants.codexEventApproval,
             throttleKey: nil
         )
     }
@@ -383,6 +463,7 @@ final class HookServer: ObservableObject {
             kind: .completion,
             source: Constants.sourceClaude,
             project: project,
+            scopeKey: notificationScopeKey(cwd: cwd, json: json, fallback: project),
             message: message,
             eventType: "stop",
             throttleKey: nil
@@ -390,10 +471,18 @@ final class HookServer: ObservableObject {
     }
 
     private func process(delivery: NotificationDelivery) {
+        let now = Date()
+        if shouldSuppressCompletion(for: delivery, now: now) {
+            let key = interactiveStateKey(for: delivery)
+            recentInteractiveStates.removeValue(forKey: key)
+            log.notice("event=hook_completion_suppressed source=\(delivery.source) project=\(delivery.project) type=\(delivery.eventType)")
+            return
+        }
+
         guard !shouldThrottle(delivery: delivery) else { return }
         if shouldDeduplicate(
             source: delivery.source,
-            project: delivery.project,
+            scopeKey: delivery.scopeKey,
             eventType: delivery.eventType,
             message: delivery.message
         ) {
@@ -401,6 +490,7 @@ final class HookServer: ObservableObject {
             return
         }
 
+        recordInteractiveStateIfNeeded(for: delivery, now: now)
         dispatchNotification(
             kind: delivery.kind,
             source: delivery.source,
@@ -430,6 +520,17 @@ final class HookServer: ObservableObject {
     private func nonEmptyMessage(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func claudeNotificationKind(for message: String) -> MessageFormatter.NotificationKind {
+        if message.contains("needs your permission") {
+            return .approval
+        }
+        let range = NSRange(message.startIndex..<message.endIndex, in: message)
+        if Self.inputRegex.firstMatch(in: message, range: range) != nil {
+            return .input
+        }
+        return .info
     }
 
     private func codexNotificationKind(for eventType: String) -> MessageFormatter.NotificationKind? {
@@ -479,6 +580,75 @@ final class HookServer: ObservableObject {
             return message
         }
         return "工具: \(String(message[captureRange]))"
+    }
+
+    private func interactiveStateKey(for delivery: NotificationDelivery) -> String {
+        "\(delivery.source)|\(delivery.scopeKey)"
+    }
+
+    private func notificationScopeKey(cwd: String, json: [String: Any], fallback: String) -> String {
+        let base = nonEmptyMessage(cwd) ?? fallback
+        let identities = executionIdentityComponents(from: json)
+        let suffix = identities.isEmpty ? "" : "|" + identities.joined(separator: "|")
+        return "\(base)\(suffix)"
+    }
+
+    private func executionIdentityComponents(from json: [String: Any]) -> [String] {
+        let directKeys = [
+            "session_id",
+            "session-id",
+            "sessionId",
+            "conversation_id",
+            "conversation-id",
+            "conversationId",
+            "request_id",
+            "request-id",
+            "requestId",
+            "tool_call_id",
+            "tool-call-id",
+            "toolCallId",
+        ]
+        let nestedKeys = [
+            ("session", "session"),
+            ("conversation", "conversation"),
+            ("request", "request"),
+            ("tool_call", "tool_call"),
+            ("toolCall", "tool_call"),
+        ]
+
+        var components: [String] = []
+
+        for key in directKeys {
+            if let value = nonEmptyMessage(stringValue(in: json, key: key)) {
+                components.append("\(key)=\(value)")
+            }
+        }
+
+        for (containerKey, label) in nestedKeys {
+            guard let container = json[containerKey] as? [String: Any],
+                  let value = nonEmptyMessage(stringValue(in: container, key: "id"))
+            else { continue }
+            components.append("\(label)=\(value)")
+        }
+
+        var uniqueComponents: [String] = []
+        for component in components where !uniqueComponents.contains(component) {
+            uniqueComponents.append(component)
+        }
+        return uniqueComponents
+    }
+
+    private func pruneInteractiveStates(now: Date) {
+        if recentInteractiveStates.count > 100 {
+            recentInteractiveStates = recentInteractiveStates.filter {
+                now.timeIntervalSince($0.value.recordedAt) < completionSuppressionInterval
+            }
+            return
+        }
+
+        recentInteractiveStates = recentInteractiveStates.filter {
+            now.timeIntervalSince($0.value.recordedAt) < completionSuppressionInterval
+        }
     }
 
     nonisolated private func sendResponse(conn: NWConnection, status: Int, body: String) {
