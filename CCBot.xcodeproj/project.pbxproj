@@ -1,0 +1,516 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		05C7817C1BA6837AA094DB0F /* StringUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 374ED3297227ACEE4ED4A327 /* StringUtils.swift */; };
+		F1A2B3C4D5E6F708A9B0C1D2 /* FileUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D2C3B4A5F60798B9A0D1C2 /* FileUtilities.swift */; };
+		156FA150E6990531DFBC5454 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88475B3A6A261E749F86F4F4 /* AppState.swift */; };
+		211AB555DFDC5ECD65A9E340 /* TelegramBotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 228CE61D070879072A30A8E2 /* TelegramBotTests.swift */; };
+		565A6699E9A791277BB49991 /* SystemNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E25B4511CE8B72819DDE0D /* SystemNotifier.swift */; };
+		76188C78BB4DD9F302367DC3 /* CodexNotifyInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B49F0D7238A29B8133DDF7F /* CodexNotifyInstaller.swift */; };
+		80C62E2191180D1D24976F69 /* MessageFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D48B4A8FAB2B185A6A58EA5 /* MessageFormatter.swift */; };
+		940CB91619B729EC1983A6B4 /* HookServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 700209C23AABF3CA3E6257A9 /* HookServer.swift */; };
+		9639668E01CDF56E447D7A81 /* ConstantsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF494761C6ADF29CCBAEE544 /* ConstantsTests.swift */; };
+		97427DB2FAAE0629A7AD8311 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DD9706AE8A5FCDE40CA772A /* Constants.swift */; };
+		97E0F704EA9F85645F652B4A /* TelegramBot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68AA225AC4728D71C5A6EF4C /* TelegramBot.swift */; };
+		A394B91DE50B1989803094C8 /* NotificationPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28D30BCD6466138CADCC3CE /* NotificationPreferences.swift */; };
+		A6D41D58D921438A1F66B8F1 /* CCBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C98B7F83314AFD03BE0F647 /* CCBotApp.swift */; };
+		B2AD79F0C3508328DE9EB862 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AD356A59EC4E0670EC110289 /* Assets.xcassets */; };
+		BDA16936045ED0C2F92726D9 /* HookInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB316C35F51F5510D97600A1 /* HookInstaller.swift */; };
+		C19CA5ED1F80A6929F4FD442 /* NotificationPreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BA3A95E4029E5CB0E8094E0 /* NotificationPreferencesTests.swift */; };
+		C5C6967249783C99B34779B3 /* MessageFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 194FFBF39B0E1090938A1276 /* MessageFormatterTests.swift */; };
+		C5E4649F8F1EA8CC8348962D /* CCGUIWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB542F27C2BC4323F42EF32E /* CCGUIWatcher.swift */; };
+		D01A76690ADFE61FDEA115E7 /* CodexNotifyInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 311CBAC2C072FDA70C29F999 /* CodexNotifyInstallerTests.swift */; };
+		D58F0BF0491693B6688F99A7 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCF32A158EB479B567D56BA8 /* UpdateChecker.swift */; };
+		DE49F368ABC0A766A5354190 /* HookServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89789840ABD02BD8EB5EEA0 /* HookServerTests.swift */; };
+		EB84B0894B894D2E31BDB057 /* HookInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A5F6AD5A9133F427792E8D1 /* HookInstallerTests.swift */; };
+		F716F326490FF7B2E6A2E1EE /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB2A78A71A901104A051FB84 /* MenuBarView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		54A1BC704D141EE777E1FE93 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D6AD9BA0ED3274E811B77222 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 96749C8029D3DA65F6320411;
+			remoteInfo = CCBot;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0292A87AA5871C044896FF7D /* CCBotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CCBotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0DD9706AE8A5FCDE40CA772A /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
+		194FFBF39B0E1090938A1276 /* MessageFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageFormatterTests.swift; sourceTree = "<group>"; };
+		1D48B4A8FAB2B185A6A58EA5 /* MessageFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageFormatter.swift; sourceTree = "<group>"; };
+		228CE61D070879072A30A8E2 /* TelegramBotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramBotTests.swift; sourceTree = "<group>"; };
+		26D6D57A931A771C2B43DCA9 /* CCBot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CCBot.entitlements; sourceTree = "<group>"; };
+		311CBAC2C072FDA70C29F999 /* CodexNotifyInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexNotifyInstallerTests.swift; sourceTree = "<group>"; };
+		358E677F2962E651EF879859 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		374ED3297227ACEE4ED4A327 /* StringUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StringUtils.swift; sourceTree = "<group>"; };
+		3A5F6AD5A9133F427792E8D1 /* HookInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookInstallerTests.swift; sourceTree = "<group>"; };
+		3BA3A95E4029E5CB0E8094E0 /* NotificationPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferencesTests.swift; sourceTree = "<group>"; };
+		68AA225AC4728D71C5A6EF4C /* TelegramBot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramBot.swift; sourceTree = "<group>"; };
+		6B49F0D7238A29B8133DDF7F /* CodexNotifyInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexNotifyInstaller.swift; sourceTree = "<group>"; };
+		700209C23AABF3CA3E6257A9 /* HookServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookServer.swift; sourceTree = "<group>"; };
+		88475B3A6A261E749F86F4F4 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		8C98B7F83314AFD03BE0F647 /* CCBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCBotApp.swift; sourceTree = "<group>"; };
+		AB2A78A71A901104A051FB84 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		AB542F27C2BC4323F42EF32E /* CCGUIWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCGUIWatcher.swift; sourceTree = "<group>"; };
+		AD356A59EC4E0670EC110289 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B89789840ABD02BD8EB5EEA0 /* HookServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookServerTests.swift; sourceTree = "<group>"; };
+		C28D30BCD6466138CADCC3CE /* NotificationPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferences.swift; sourceTree = "<group>"; };
+		C2C49D80B14393D726AF6351 /* CCBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CCBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C8E25B4511CE8B72819DDE0D /* SystemNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNotifier.swift; sourceTree = "<group>"; };
+		CB316C35F51F5510D97600A1 /* HookInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookInstaller.swift; sourceTree = "<group>"; };
+		CCF32A158EB479B567D56BA8 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		DF494761C6ADF29CCBAEE544 /* ConstantsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConstantsTests.swift; sourceTree = "<group>"; };
+		E1D2C3B4A5F60798B9A0D1C2 /* FileUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUtilities.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		3272F15FF17B1626253DCFFF /* CCBot */ = {
+			isa = PBXGroup;
+			children = (
+				88475B3A6A261E749F86F4F4 /* AppState.swift */,
+				AD356A59EC4E0670EC110289 /* Assets.xcassets */,
+				26D6D57A931A771C2B43DCA9 /* CCBot.entitlements */,
+				8C98B7F83314AFD03BE0F647 /* CCBotApp.swift */,
+				0DD9706AE8A5FCDE40CA772A /* Constants.swift */,
+				358E677F2962E651EF879859 /* Info.plist */,
+				9F40424EAC00D3F1AE568E3D /* Services */,
+				9B2D09C26BE198E7CE4FCE37 /* Utilities */,
+				9D6B83ABC9F2D31818062366 /* Views */,
+			);
+			path = CCBot;
+			sourceTree = "<group>";
+		};
+		713548F23FF438E53535826A /* CCBotTests */ = {
+			isa = PBXGroup;
+			children = (
+				311CBAC2C072FDA70C29F999 /* CodexNotifyInstallerTests.swift */,
+				DF494761C6ADF29CCBAEE544 /* ConstantsTests.swift */,
+				3A5F6AD5A9133F427792E8D1 /* HookInstallerTests.swift */,
+				B89789840ABD02BD8EB5EEA0 /* HookServerTests.swift */,
+				194FFBF39B0E1090938A1276 /* MessageFormatterTests.swift */,
+				3BA3A95E4029E5CB0E8094E0 /* NotificationPreferencesTests.swift */,
+				228CE61D070879072A30A8E2 /* TelegramBotTests.swift */,
+			);
+			path = CCBotTests;
+			sourceTree = "<group>";
+		};
+		9B2D09C26BE198E7CE4FCE37 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				6B49F0D7238A29B8133DDF7F /* CodexNotifyInstaller.swift */,
+				E1D2C3B4A5F60798B9A0D1C2 /* FileUtilities.swift */,
+				CB316C35F51F5510D97600A1 /* HookInstaller.swift */,
+				1D48B4A8FAB2B185A6A58EA5 /* MessageFormatter.swift */,
+				C28D30BCD6466138CADCC3CE /* NotificationPreferences.swift */,
+				374ED3297227ACEE4ED4A327 /* StringUtils.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		9D6B83ABC9F2D31818062366 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				AB2A78A71A901104A051FB84 /* MenuBarView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		9F40424EAC00D3F1AE568E3D /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				AB542F27C2BC4323F42EF32E /* CCGUIWatcher.swift */,
+				700209C23AABF3CA3E6257A9 /* HookServer.swift */,
+				C8E25B4511CE8B72819DDE0D /* SystemNotifier.swift */,
+				68AA225AC4728D71C5A6EF4C /* TelegramBot.swift */,
+				CCF32A158EB479B567D56BA8 /* UpdateChecker.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		B358A4EA1395856E401E1A43 = {
+			isa = PBXGroup;
+			children = (
+				3272F15FF17B1626253DCFFF /* CCBot */,
+				713548F23FF438E53535826A /* CCBotTests */,
+				EB0D7B5DA4CA3005DF77247C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EB0D7B5DA4CA3005DF77247C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C2C49D80B14393D726AF6351 /* CCBot.app */,
+				0292A87AA5871C044896FF7D /* CCBotTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		96749C8029D3DA65F6320411 /* CCBot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 379ECB558A8571608256C702 /* Build configuration list for PBXNativeTarget "CCBot" */;
+			buildPhases = (
+				0837623A35385AC098C7E054 /* Sources */,
+				DCFC4CDF6A803C8698D35477 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CCBot;
+			packageProductDependencies = (
+			);
+			productName = CCBot;
+			productReference = C2C49D80B14393D726AF6351 /* CCBot.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C6F8114826EBE8B54FFFEE0E /* CCBotTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CB0C21038FA17FD185B9AC4A /* Build configuration list for PBXNativeTarget "CCBotTests" */;
+			buildPhases = (
+				F4AA00E59BB57A5165763FF4 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				083BF23A8B44B475AA7D3791 /* PBXTargetDependency */,
+			);
+			name = CCBotTests;
+			packageProductDependencies = (
+			);
+			productName = CCBotTests;
+			productReference = 0292A87AA5871C044896FF7D /* CCBotTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D6AD9BA0ED3274E811B77222 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					96749C8029D3DA65F6320411 = {
+						ProvisioningStyle = Automatic;
+					};
+					C6F8114826EBE8B54FFFEE0E = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 54BDB33EA8328ECC44ABE182 /* Build configuration list for PBXProject "CCBot" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = B358A4EA1395856E401E1A43;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = EB0D7B5DA4CA3005DF77247C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				96749C8029D3DA65F6320411 /* CCBot */,
+				C6F8114826EBE8B54FFFEE0E /* CCBotTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		DCFC4CDF6A803C8698D35477 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B2AD79F0C3508328DE9EB862 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0837623A35385AC098C7E054 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				156FA150E6990531DFBC5454 /* AppState.swift in Sources */,
+				A6D41D58D921438A1F66B8F1 /* CCBotApp.swift in Sources */,
+				C5E4649F8F1EA8CC8348962D /* CCGUIWatcher.swift in Sources */,
+				76188C78BB4DD9F302367DC3 /* CodexNotifyInstaller.swift in Sources */,
+				97427DB2FAAE0629A7AD8311 /* Constants.swift in Sources */,
+				F1A2B3C4D5E6F708A9B0C1D2 /* FileUtilities.swift in Sources */,
+				BDA16936045ED0C2F92726D9 /* HookInstaller.swift in Sources */,
+				940CB91619B729EC1983A6B4 /* HookServer.swift in Sources */,
+				F716F326490FF7B2E6A2E1EE /* MenuBarView.swift in Sources */,
+				80C62E2191180D1D24976F69 /* MessageFormatter.swift in Sources */,
+				A394B91DE50B1989803094C8 /* NotificationPreferences.swift in Sources */,
+				05C7817C1BA6837AA094DB0F /* StringUtils.swift in Sources */,
+				565A6699E9A791277BB49991 /* SystemNotifier.swift in Sources */,
+				97E0F704EA9F85645F652B4A /* TelegramBot.swift in Sources */,
+				D58F0BF0491693B6688F99A7 /* UpdateChecker.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F4AA00E59BB57A5165763FF4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D01A76690ADFE61FDEA115E7 /* CodexNotifyInstallerTests.swift in Sources */,
+				9639668E01CDF56E447D7A81 /* ConstantsTests.swift in Sources */,
+				EB84B0894B894D2E31BDB057 /* HookInstallerTests.swift in Sources */,
+				DE49F368ABC0A766A5354190 /* HookServerTests.swift in Sources */,
+				C5C6967249783C99B34779B3 /* MessageFormatterTests.swift in Sources */,
+				C19CA5ED1F80A6929F4FD442 /* NotificationPreferencesTests.swift in Sources */,
+				211AB555DFDC5ECD65A9E340 /* TelegramBotTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		083BF23A8B44B475AA7D3791 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 96749C8029D3DA65F6320411 /* CCBot */;
+			targetProxy = 54A1BC704D141EE777E1FE93 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1FDEE383E48A1B238578D674 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ccbot.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CCBot.app/Contents/MacOS/CCBot";
+			};
+			name = Debug;
+		};
+		801B5F715B4E9ECA91BF824A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ccbot.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CCBot.app/Contents/MacOS/CCBot";
+			};
+			name = Release;
+		};
+		BD527C27581C6F62A00AB3E1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CCBot/CCBot.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = CCBot/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ccbot.app;
+				PRODUCT_NAME = CCBot;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		DA6F5CDD80E54AAB9A733C11 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CCBot/CCBot.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = CCBot/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ccbot.app;
+				PRODUCT_NAME = CCBot;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		DD2D23768FA46B828667FE3A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		EE78D910CC003B773892D9F5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		379ECB558A8571608256C702 /* Build configuration list for PBXNativeTarget "CCBot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DA6F5CDD80E54AAB9A733C11 /* Debug */,
+				BD527C27581C6F62A00AB3E1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		54BDB33EA8328ECC44ABE182 /* Build configuration list for PBXProject "CCBot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DD2D23768FA46B828667FE3A /* Debug */,
+				EE78D910CC003B773892D9F5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CB0C21038FA17FD185B9AC4A /* Build configuration list for PBXNativeTarget "CCBotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1FDEE383E48A1B238578D674 /* Debug */,
+				801B5F715B4E9ECA91BF824A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = D6AD9BA0ED3274E811B77222 /* Project object */;
+}

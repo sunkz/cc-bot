@@ -1,0 +1,40 @@
+name: CCBot
+options:
+  bundleIdPrefix: com.ccbot
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+settings:
+  SWIFT_VERSION: "6.0"
+  MACOSX_DEPLOYMENT_TARGET: "13.0"
+targets:
+  CCBot:
+    type: application
+    platform: macOS
+    sources:
+      - CCBot
+    settings:
+      INFOPLIST_FILE: CCBot/Info.plist
+      PRODUCT_BUNDLE_IDENTIFIER: com.ccbot.app
+      PRODUCT_NAME: CCBot
+      CODE_SIGN_ENTITLEMENTS: CCBot/CCBot.entitlements
+      CODE_SIGN_STYLE: Automatic
+    info:
+      path: CCBot/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleDisplayName: CCBot
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+  CCBotTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - CCBotTests
+    dependencies:
+      - target: CCBot
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.ccbot.tests
+      GENERATE_INFOPLIST_FILE: YES
+      CODE_SIGN_STYLE: Automatic

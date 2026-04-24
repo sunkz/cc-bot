@@ -1,0 +1,254 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
+
+      - name: Detect signing configuration
+        id: signing_config
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${MACOS_CERTIFICATE_P12}" ] && [ -n "${MACOS_CERTIFICATE_PASSWORD}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import Developer ID certificate
+        id: signing
+        if: ${{ steps.signing_config.outputs.enabled == 'true' }}
+        env:
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-keychain
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          CERT_PATH="$RUNNER_TEMP/developer-id-application.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          printf '%s' "$MACOS_CERTIFICATE_P12" | base64 -D -o "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep 'Developer ID Application' | head -n 1 | sed -E 's/.*"(.+)"/\1/')"
+
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "Developer ID Application identity not found in imported certificate" >&2
+            exit 1
+          fi
+
+          {
+            echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"
+            echo "SIGNING_IDENTITY=$SIGNING_IDENTITY"
+          } >> "$GITHUB_ENV"
+
+      - name: Build and sign universal release app
+        env:
+          DERIVED_DATA: ${{ github.workspace }}/build
+          SIGNING_ENABLED: ${{ steps.signing.conclusion == 'success' }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          SIGN_ARGS=()
+          if [ "$SIGNING_ENABLED" = "true" ]; then
+            SIGN_ARGS+=(
+              CODE_SIGN_STYLE=Manual
+              "CODE_SIGN_IDENTITY=$SIGNING_IDENTITY"
+              "DEVELOPMENT_TEAM=$APPLE_TEAM_ID"
+              "OTHER_CODE_SIGN_FLAGS=--timestamp --options=runtime --keychain $KEYCHAIN_PATH"
+            )
+          else
+            SIGN_ARGS+=(
+              CODE_SIGN_STYLE=Manual
+              "CODE_SIGN_IDENTITY=-"
+            )
+          fi
+
+          xcodebuild build \
+            -project CCBot.xcodeproj \
+            -scheme CCBot \
+            -configuration Release \
+            -destination "platform=macOS" \
+            -derivedDataPath "$DERIVED_DATA" \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            "${SIGN_ARGS[@]}"
+
+          APP_PATH="$DERIVED_DATA/Build/Products/Release/CCBot.app"
+          lipo -archs "$APP_PATH/Contents/MacOS/CCBot"
+
+          EXPECTED_MIN_OS=$(/usr/bin/ruby -e 'require "yaml"; puts YAML.load_file("project.yml").dig("options", "deploymentTarget", "macOS")')
+          ACTUAL_MIN_OS=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$APP_PATH/Contents/Info.plist")
+
+          echo "Expected minimum macOS: $EXPECTED_MIN_OS"
+          echo "Built app minimum macOS: $ACTUAL_MIN_OS"
+
+          if [ "$EXPECTED_MIN_OS" != "$ACTUAL_MIN_OS" ]; then
+            echo "Built app minimum macOS version does not match project.yml" >&2
+            exit 1
+          fi
+
+          if [ "$SIGNING_ENABLED" = "true" ]; then
+            codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          fi
+
+      - name: Detect notarization configuration
+        id: notary_config
+        if: ${{ steps.signing.conclusion == 'success' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${APPLE_ID}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD}" ] && [ -n "${APPLE_TEAM_ID}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Store notarization credentials
+        id: notary
+        if: ${{ steps.notary_config.outputs.enabled == 'true' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          xcrun notarytool store-credentials "ccbot-notarytool" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --keychain "$KEYCHAIN_PATH"
+
+      - name: Package DMG
+        env:
+          DERIVED_DATA: ${{ github.workspace }}/build
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$DERIVED_DATA/Build/Products/Release/CCBot.app"
+          DMG_PATH="dist/CCBot-${TAG_NAME}.dmg"
+          CHECKSUM_PATH="${DMG_PATH}.sha256"
+          RW_DMG_PATH="$RUNNER_TEMP/CCBot-rw.dmg"
+          STAGING_DIR="$RUNNER_TEMP/dmg-staging"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Release app not found at $APP_PATH" >&2
+            exit 1
+          fi
+
+          mkdir -p dist "$STAGING_DIR"
+          cp -R "$APP_PATH" "$STAGING_DIR/"
+          ln -s /Applications "$STAGING_DIR/Applications"
+
+          hdiutil create \
+            -volname "CCBot" \
+            -srcfolder "$STAGING_DIR" \
+            -ov \
+            -format UDRW \
+            -fs HFS+ \
+            "$RW_DMG_PATH"
+
+          MOUNT_DIR=$(hdiutil attach "$RW_DMG_PATH" -readwrite -noverify | grep '/Volumes/' | sed 's/.*\/Volumes/\/Volumes/')
+
+          osascript <<'APPLESCRIPT'
+            tell application "Finder"
+              tell disk "CCBot"
+                open
+                set current view of container window to icon view
+                set toolbar visible of container window to false
+                set statusbar visible of container window to false
+                set bounds of container window to {100, 100, 640, 400}
+                set opts to icon view options of container window
+                set icon size of opts to 80
+                set arrangement of opts to not arranged
+                set position of item "CCBot.app" of container window to {140, 150}
+                set position of item "Applications" of container window to {400, 150}
+                close
+              end tell
+            end tell
+          APPLESCRIPT
+
+          sync
+          sleep 2
+          hdiutil detach "$MOUNT_DIR" -force
+
+          hdiutil convert "$RW_DMG_PATH" \
+            -format UDZO \
+            -o "$DMG_PATH"
+
+          rm -f "$RW_DMG_PATH"
+          rm -rf "$STAGING_DIR"
+
+          shasum -a 256 "$DMG_PATH" > "$CHECKSUM_PATH"
+
+      - name: Notarize and staple DMG
+        if: ${{ steps.notary.conclusion == 'success' }}
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          DMG_PATH="dist/CCBot-${TAG_NAME}.dmg"
+          CHECKSUM_PATH="${DMG_PATH}.sha256"
+
+          xcrun notarytool submit "$DMG_PATH" \
+            --keychain-profile "ccbot-notarytool" \
+            --keychain "$KEYCHAIN_PATH" \
+            --wait
+
+          xcrun stapler staple "$DMG_PATH"
+          shasum -a 256 "$DMG_PATH" > "$CHECKSUM_PATH"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CCBot-${{ github.ref_name }}
+          path: dist/*
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          gh release delete "$TAG_NAME" --repo "${GITHUB_REPOSITORY}" --yes 2>/dev/null || true
+
+          gh release create "$TAG_NAME" \
+            "dist/CCBot-${TAG_NAME}.dmg" \
+            "dist/CCBot-${TAG_NAME}.dmg.sha256" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "CCBot ${TAG_NAME}" \
+            --generate-notes
