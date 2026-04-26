@@ -32,8 +32,44 @@ final class CodexNotifyInstallerTests: XCTestCase {
         try content.write(to: path, atomically: true, encoding: .utf8)
     }
 
-    private func installedConfigData() throws -> Data {
-        try CodexNotifyInstaller.mergeHooksFeature(into: CodexNotifyInstaller.mergeNotify(into: Data()))
+    private func jsonString(_ value: Any) throws -> String {
+        if let string = value as? String {
+            let data = try JSONSerialization.data(withJSONObject: [string], options: [])
+            let wrapped = try XCTUnwrap(String(data: data, encoding: .utf8))
+            return String(wrapped.dropFirst().dropLast())
+        }
+
+        let data = try JSONSerialization.data(withJSONObject: value, options: [])
+        return try XCTUnwrap(String(data: data, encoding: .utf8))
+    }
+
+    private func wrappedManagedNotifyConfigData(
+        command: String = "/tmp/SkyComputerUseClient",
+        homeDirectory: URL
+    ) throws -> Data {
+        let notifyPath = homeDirectory
+            .appendingPathComponent(".codex/hooks/cc-bot-notify.sh")
+            .path
+        let previousNotify = try jsonString(["bash", notifyPath])
+        let config = """
+        notify = [\(try jsonString(command)), \(try jsonString("turn-ended")), \(try jsonString("--previous-notify")), \(try jsonString(previousNotify))]
+        model = "gpt-5.4"
+        """
+        return Data(config.utf8)
+    }
+
+    private func computerUseNotifyConfigData(command: String = "/tmp/SkyComputerUseClient") throws -> Data {
+        let config = """
+        notify = [\(try jsonString(command)), \(try jsonString("turn-ended"))]
+        model = "gpt-5.4"
+        """
+        return Data(config.utf8)
+    }
+
+    private func installedConfigData(for homeDirectory: URL) throws -> Data {
+        try CodexNotifyInstaller.mergeHooksFeature(
+            into: CodexNotifyInstaller.mergeNotify(into: Data(), homeDirectory: homeDirectory)
+        )
     }
 
     func testMergeIntoEmptyConfig() throws {
@@ -42,6 +78,7 @@ final class CodexNotifyInstallerTests: XCTestCase {
 
         XCTAssertTrue(text.contains(#"notify = ["bash", ""#))
         XCTAssertTrue(text.contains("cc-bot-notify.sh"))
+        XCTAssertFalse(text.contains(#"\/"#), text)
     }
 
     func testMergeInsertsBeforeFirstTable() throws {
@@ -71,6 +108,17 @@ final class CodexNotifyInstallerTests: XCTestCase {
     func testMergeRejectsExistingForeignNotify() throws {
         let existing = """
         notify = ["terminal-notifier", "-message", "done"]
+        model = "gpt-5.4"
+        """.data(using: .utf8)!
+
+        XCTAssertThrowsError(try CodexNotifyInstaller.mergeNotify(into: existing)) { error in
+            XCTAssertEqual(error as? CodexNotifyInstaller.InstallError, .notifyAlreadyConfigured)
+        }
+    }
+
+    func testMergeRejectsForeignNotifyUsingSameScriptBasename() throws {
+        let existing = """
+        notify = ["bash", "/tmp/custom/cc-bot-notify.sh"]
         model = "gpt-5.4"
         """.data(using: .utf8)!
 
@@ -162,6 +210,45 @@ final class CodexNotifyInstallerTests: XCTestCase {
         XCTAssertFalse(commands.contains("bash ~/.codex/hooks/cc-bot-permission-request.sh"))
     }
 
+    func testMergePermissionRequestHookCanonicalizesLegacyOwnEntry() throws {
+        let existing = """
+        {
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "matcher": "Bash",
+                "hooks": [
+                  {"type": "command", "command": "bash ~/.codex/hooks/cc-bot-permission-request.sh"},
+                  {"type": "command", "command": "echo foreign"}
+                ]
+              }
+            ]
+          }
+        }
+        """.data(using: .utf8)!
+
+        let merged = try CodexNotifyInstaller.mergePermissionRequestHook(into: existing)
+        let json = try JSONSerialization.jsonObject(with: merged) as! [String: Any]
+        let hooks = try XCTUnwrap(json["hooks"] as? [String: Any])
+        let entries = try XCTUnwrap(hooks["PermissionRequest"] as? [[String: Any]])
+
+        XCTAssertEqual(entries.count, 2)
+
+        let canonical = try XCTUnwrap(entries.first(where: { entry in
+            let hookList = entry["hooks"] as? [[String: Any]] ?? []
+            return hookList.contains { ($0["command"] as? String) == "bash ~/.codex/hooks/cc-bot-permission-request.sh" }
+        }))
+        XCTAssertEqual(canonical["matcher"] as? String, ".*")
+        let canonicalHook = try XCTUnwrap((canonical["hooks"] as? [[String: Any]])?.first)
+        XCTAssertEqual(canonicalHook["statusMessage"] as? String, "Sending approval notification")
+
+        let foreign = try XCTUnwrap(entries.first(where: { entry in
+            let hookList = entry["hooks"] as? [[String: Any]] ?? []
+            return hookList.contains { ($0["command"] as? String) == "echo foreign" }
+        }))
+        XCTAssertEqual(foreign["matcher"] as? String, "Bash")
+    }
+
     func testMergeHooksFeatureIntoConfigWithoutSection() throws {
         let result = try CodexNotifyInstaller.mergeHooksFeature(into: """
         model = "gpt-5.4"
@@ -204,12 +291,55 @@ final class CodexNotifyInstallerTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: sandbox.hooksPath, encoding: .utf8), #"{"hooks":"#)
     }
 
+    func testInstallAcceptsWrappedManagedNotify() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try wrappedManagedNotifyConfigData(homeDirectory: sandbox.root).write(to: sandbox.configPath, options: .atomic)
+
+        try CodexNotifyInstaller.install(fileManager: .default, homeDirectory: sandbox.root)
+
+        let configText = try String(contentsOf: sandbox.configPath, encoding: .utf8)
+        XCTAssertTrue(configText.contains("SkyComputerUseClient"), configText)
+        XCTAssertTrue(configText.contains("--previous-notify"), configText)
+        XCTAssertTrue(configText.contains("cc-bot-notify.sh"), configText)
+        XCTAssertTrue(configText.contains("codex_hooks = true # ccbot"), configText)
+        XCTAssertTrue(CodexNotifyInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
+    }
+
+    func testInstallAugmentsComputerUseNotifyWithPreviousNotify() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try computerUseNotifyConfigData().write(to: sandbox.configPath, options: .atomic)
+
+        try CodexNotifyInstaller.install(fileManager: .default, homeDirectory: sandbox.root)
+
+        let configText = try String(contentsOf: sandbox.configPath, encoding: .utf8)
+        XCTAssertTrue(configText.contains("SkyComputerUseClient"), configText)
+        XCTAssertTrue(configText.contains("--previous-notify"), configText)
+        XCTAssertTrue(configText.contains("cc-bot-notify.sh"), configText)
+        XCTAssertTrue(configText.contains("codex_hooks = true # ccbot"), configText)
+        XCTAssertFalse(configText.contains(#"\/"#), configText)
+        XCTAssertTrue(CodexNotifyInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
+    }
+
+    func testHasManagedArtifactsDetectsWrappedManagedNotifyWithoutScripts() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try wrappedManagedNotifyConfigData(homeDirectory: sandbox.root).write(to: sandbox.configPath, options: .atomic)
+
+        XCTAssertFalse(CodexNotifyInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
+        XCTAssertTrue(CodexNotifyInstaller.hasManagedArtifacts(fileManager: .default, homeDirectory: sandbox.root))
+    }
+
     func testUninstallRollsBackArtifactsWhenHooksJSONIsInvalid() throws {
         let sandbox = try makeSandbox()
         defer { try? FileManager.default.removeItem(at: sandbox.root) }
         try writeScript("notify-original", to: sandbox.notifyScriptPath)
         try writeScript("permission-original", to: sandbox.permissionScriptPath)
-        try installedConfigData().write(to: sandbox.configPath, options: .atomic)
+        try installedConfigData(for: sandbox.root).write(to: sandbox.configPath, options: .atomic)
         try #"{"hooks":"#.write(to: sandbox.hooksPath, atomically: true, encoding: .utf8)
 
         XCTAssertThrowsError(
@@ -222,9 +352,191 @@ final class CodexNotifyInstallerTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: sandbox.permissionScriptPath, encoding: .utf8), "permission-original")
         XCTAssertEqual(
             try String(contentsOf: sandbox.configPath, encoding: .utf8),
-            String(decoding: try installedConfigData(), as: UTF8.self)
+            String(decoding: try installedConfigData(for: sandbox.root), as: UTF8.self)
         )
         XCTAssertEqual(try String(contentsOf: sandbox.hooksPath, encoding: .utf8), #"{"hooks":"#)
+    }
+
+    func testUninstallRemovesWrappedManagedNotifyButKeepsWrapper() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notify-original", to: sandbox.notifyScriptPath)
+        try writeScript("permission-original", to: sandbox.permissionScriptPath)
+        try CodexNotifyInstaller
+            .mergeHooksFeature(into: wrappedManagedNotifyConfigData(homeDirectory: sandbox.root))
+            .write(to: sandbox.configPath, options: .atomic)
+        try CodexNotifyInstaller
+            .mergePermissionRequestHook(into: Data("{}".utf8))
+            .write(to: sandbox.hooksPath, options: .atomic)
+
+        try CodexNotifyInstaller.uninstall(fileManager: .default, homeDirectory: sandbox.root)
+
+        let configText = try String(contentsOf: sandbox.configPath, encoding: .utf8)
+        XCTAssertTrue(configText.contains("SkyComputerUseClient"), configText)
+        XCTAssertFalse(configText.contains("--previous-notify"), configText)
+        XCTAssertFalse(configText.contains("cc-bot-notify.sh"), configText)
+        XCTAssertFalse(configText.contains("codex_hooks = true # ccbot"), configText)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.notifyScriptPath.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.permissionScriptPath.path))
+        XCTAssertFalse(CodexNotifyInstaller.hasManagedArtifacts(fileManager: .default, homeDirectory: sandbox.root))
+    }
+
+    func testUninstallDeletesConfigWhenOnlyManagedNotifyAndFeatureRemain() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notify-original", to: sandbox.notifyScriptPath)
+        try writeScript("permission-original", to: sandbox.permissionScriptPath)
+        try installedConfigData(for: sandbox.root).write(to: sandbox.configPath, options: .atomic)
+
+        try CodexNotifyInstaller.uninstall(fileManager: .default, homeDirectory: sandbox.root)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.configPath.path))
+    }
+
+    func testUninstallDeletesHooksFileWhenOnlyManagedPermissionRequestRemains() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notify-original", to: sandbox.notifyScriptPath)
+        try writeScript("permission-original", to: sandbox.permissionScriptPath)
+        let installedHooks = try CodexNotifyInstaller.mergePermissionRequestHook(into: Data("{}".utf8))
+        try installedHooks.write(to: sandbox.hooksPath, options: .atomic)
+
+        try CodexNotifyInstaller.uninstall(fileManager: .default, homeDirectory: sandbox.root)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.hooksPath.path))
+    }
+
+    func testUninstallPreservesForeignConfigAndHooksContent() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notify-original", to: sandbox.notifyScriptPath)
+        try writeScript("permission-original", to: sandbox.permissionScriptPath)
+
+        let configWithForeignContent = try CodexNotifyInstaller.mergeHooksFeature(
+            into: CodexNotifyInstaller.mergeNotify(
+                into: Data("model = \"gpt-5.4\"\n".utf8),
+                homeDirectory: sandbox.root
+            )
+        )
+        try configWithForeignContent.write(to: sandbox.configPath, options: .atomic)
+
+        let foreignHooks = """
+        {
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "matcher": "Bash",
+                "hooks": [
+                  {"type": "command", "command": "echo foreign"}
+                ]
+              }
+            ]
+          }
+        }
+        """.data(using: .utf8)!
+        let installedHooks = try CodexNotifyInstaller.mergePermissionRequestHook(into: foreignHooks)
+        try installedHooks.write(to: sandbox.hooksPath, options: .atomic)
+
+        try CodexNotifyInstaller.uninstall(fileManager: .default, homeDirectory: sandbox.root)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sandbox.configPath.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sandbox.hooksPath.path))
+
+        let configText = try String(contentsOf: sandbox.configPath, encoding: .utf8)
+        XCTAssertTrue(configText.contains(#"model = "gpt-5.4""#))
+        XCTAssertFalse(configText.contains("cc-bot-notify.sh"))
+        XCTAssertFalse(configText.contains("codex_hooks = true # ccbot"))
+
+        let hooksText = try String(contentsOf: sandbox.hooksPath, encoding: .utf8)
+        XCTAssertTrue(hooksText.contains("echo foreign"))
+        XCTAssertFalse(hooksText.contains("cc-bot-permission-request.sh"))
+    }
+
+    func testUninstallDeletesEmptyCodexHooksDirectoryButKeepsForeignFiles() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notify-original", to: sandbox.notifyScriptPath)
+        try writeScript("permission-original", to: sandbox.permissionScriptPath)
+        try installedConfigData(for: sandbox.root).write(to: sandbox.configPath, options: .atomic)
+        try CodexNotifyInstaller
+            .mergePermissionRequestHook(into: Data("{}".utf8))
+            .write(to: sandbox.hooksPath, options: .atomic)
+
+        try CodexNotifyInstaller.uninstall(fileManager: .default, homeDirectory: sandbox.root)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.hooksDir.path))
+
+        try FileManager.default.createDirectory(at: sandbox.hooksDir, withIntermediateDirectories: true)
+        try writeScript("foreign", to: sandbox.hooksDir.appendingPathComponent("foreign.sh"))
+        try writeScript("notify-original", to: sandbox.notifyScriptPath)
+        try writeScript("permission-original", to: sandbox.permissionScriptPath)
+        try installedConfigData(for: sandbox.root).write(to: sandbox.configPath, options: .atomic)
+        try CodexNotifyInstaller
+            .mergePermissionRequestHook(into: Data("{}".utf8))
+            .write(to: sandbox.hooksPath, options: .atomic)
+
+        try CodexNotifyInstaller.uninstall(fileManager: .default, homeDirectory: sandbox.root)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sandbox.hooksDir.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sandbox.hooksDir.appendingPathComponent("foreign.sh").path))
+    }
+
+    func testUpdateScriptIfInstalledNormalizesLegacyPermissionRequestHook() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notify-original", to: sandbox.notifyScriptPath)
+        try writeScript("permission-original", to: sandbox.permissionScriptPath)
+        try installedConfigData(for: sandbox.root).write(to: sandbox.configPath, options: .atomic)
+        try """
+        {
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "matcher": "Bash",
+                "hooks": [
+                  {"type": "command", "command": "bash ~/.codex/hooks/cc-bot-permission-request.sh"}
+                ]
+              }
+            ]
+          }
+        }
+        """.write(to: sandbox.hooksPath, atomically: true, encoding: .utf8)
+
+        try CodexNotifyInstaller.updateScriptIfInstalled(fileManager: .default, homeDirectory: sandbox.root)
+
+        let hooksData = try Data(contentsOf: sandbox.hooksPath)
+        let json = try JSONSerialization.jsonObject(with: hooksData) as! [String: Any]
+        let hooks = try XCTUnwrap(json["hooks"] as? [String: Any])
+        let entries = try XCTUnwrap(hooks["PermissionRequest"] as? [[String: Any]])
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0]["matcher"] as? String, ".*")
+        let hook = try XCTUnwrap((entries[0]["hooks"] as? [[String: Any]])?.first)
+        XCTAssertEqual(hook["statusMessage"] as? String, "Sending approval notification")
+    }
+
+    func testHasManagedArtifactsDetectsPartialInstall() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("#!/bin/bash\nexit 0\n", to: sandbox.notifyScriptPath)
+
+        XCTAssertFalse(CodexNotifyInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
+        XCTAssertTrue(CodexNotifyInstaller.hasManagedArtifacts(fileManager: .default, homeDirectory: sandbox.root))
+    }
+
+    func testHasManagedArtifactsDetectsPermissionRequestHookInEscapedJSONWithoutScripts() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        let installedHooks = try CodexNotifyInstaller.mergePermissionRequestHook(into: Data("{}".utf8))
+        try installedHooks.write(to: sandbox.hooksPath, options: .atomic)
+
+        XCTAssertFalse(CodexNotifyInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
+        XCTAssertTrue(CodexNotifyInstaller.hasManagedArtifacts(fileManager: .default, homeDirectory: sandbox.root))
     }
 
     func testIsInstalledRequiresScriptsNotifyFeatureAndPermissionRequestHook() throws {
@@ -234,7 +546,7 @@ final class CodexNotifyInstallerTests: XCTestCase {
         XCTAssertFalse(CodexNotifyInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
 
         try writeScript("#!/bin/bash\nexit 0\n", to: sandbox.notifyScriptPath)
-        try installedConfigData().write(to: sandbox.configPath, options: .atomic)
+        try installedConfigData(for: sandbox.root).write(to: sandbox.configPath, options: .atomic)
         XCTAssertFalse(CodexNotifyInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
 
         try writeScript("#!/bin/bash\nexit 0\n", to: sandbox.permissionScriptPath)

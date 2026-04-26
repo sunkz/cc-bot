@@ -65,8 +65,6 @@ final class UpdateChecker: ObservableObject {
         isChecking = true
         defer { isChecking = false }
 
-        recordCheckAttempt()
-
         var req = URLRequest(url: releaseURL)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         do {
@@ -86,6 +84,7 @@ final class UpdateChecker: ObservableObject {
             }
             let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
             latestVersion = version
+            recordCheckAttempt()
             lastErrorMessage = nil
             log.notice("event=update_check status=success version=\(version)")
         } catch {

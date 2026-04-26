@@ -44,7 +44,7 @@ final class TelegramBotTests: XCTestCase {
         XCTAssertTrue(msg.hasPrefix("✅"))
         XCTAssertTrue(msg.contains("Codex"))
         XCTAssertTrue(msg.contains("myapp"))
-        XCTAssertTrue(msg.contains("本轮完成"))
+        XCTAssertTrue(msg.contains("已完成"))
         XCTAssertTrue(msg.contains("Done building the feature."))
         XCTAssertFalse(msg.contains("关键:"))
     }

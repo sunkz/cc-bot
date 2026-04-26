@@ -73,6 +73,127 @@ final class UpdateCheckerTests: XCTestCase {
         )
     }
 
+    func testRunScriptFailsWhenXcodebuildFailsEvenIfStaleAppExists() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        try fileManager.copyItem(at: repoRoot.appendingPathComponent("run.sh"), to: root.appendingPathComponent("run.sh"))
+
+        try fileManager.createDirectory(at: root.appendingPathComponent("CCBot.xcodeproj"), withIntermediateDirectories: true)
+        try fileManager.createDirectory(
+            at: root.appendingPathComponent(".build/DerivedData/Build/Products/Debug/CCBot.app", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+
+        let binDir = root.appendingPathComponent("bin", isDirectory: true)
+        try fileManager.createDirectory(at: binDir, withIntermediateDirectories: true)
+        let xcodebuildPath = binDir.appendingPathComponent("xcodebuild")
+        try """
+        #!/usr/bin/env bash
+        echo "error: synthetic build failure"
+        exit 1
+        """.write(to: xcodebuildPath, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: xcodebuildPath.path)
+
+        let outputPipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.currentDirectoryURL = root
+        process.arguments = ["run.sh", "build"]
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = "\(binDir.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
+        process.environment = environment
+
+        try process.run()
+        process.waitUntilExit()
+
+        let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        XCTAssertNotEqual(process.terminationStatus, 0)
+        XCTAssertTrue(output.contains("Build failed"), "run.sh 应该在 xcodebuild 失败时直接报错，而不是复用旧产物")
+    }
+
+    func testRunScriptFailsWhenPortRemainsBusy() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        try fileManager.copyItem(at: repoRoot.appendingPathComponent("run.sh"), to: root.appendingPathComponent("run.sh"))
+
+        try fileManager.createDirectory(at: root.appendingPathComponent("CCBot.xcodeproj"), withIntermediateDirectories: true)
+        try fileManager.createDirectory(
+            at: root.appendingPathComponent(".build/DerivedData/Build/Products/Debug/CCBot.app", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+
+        let binDir = root.appendingPathComponent("bin", isDirectory: true)
+        try fileManager.createDirectory(at: binDir, withIntermediateDirectories: true)
+        let openMarkerPath = root.appendingPathComponent("open-called").path
+        let stubScripts: [(String, String)] = [
+            ("xcodebuild", """
+            #!/usr/bin/env bash
+            echo "Build Succeeded"
+            exit 0
+            """),
+            ("pkill", """
+            #!/usr/bin/env bash
+            exit 0
+            """),
+            ("lsof", """
+            #!/usr/bin/env bash
+            exit 0
+            """),
+            ("sleep", """
+            #!/usr/bin/env bash
+            exit 0
+            """),
+            ("open", """
+            #!/usr/bin/env bash
+            touch "\(openMarkerPath)"
+            exit 0
+            """),
+        ]
+
+        for (name, contents) in stubScripts {
+            let scriptPath = binDir.appendingPathComponent(name)
+            try contents.write(to: scriptPath, atomically: true, encoding: .utf8)
+            try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
+        }
+
+        let outputPipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.currentDirectoryURL = root
+        process.arguments = ["run.sh", "run"]
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = "\(binDir.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
+        process.environment = environment
+
+        try process.run()
+        process.waitUntilExit()
+
+        let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        XCTAssertNotEqual(process.terminationStatus, 0)
+        XCTAssertTrue(output.contains("port 62400 is still in use"))
+        XCTAssertFalse(fileManager.fileExists(atPath: openMarkerPath))
+    }
+
     @MainActor
     func testCheckSkipsNetworkWhenRecentAutomaticCheckExists() async {
         let url = URL(string: "https://api.github.com/repos/sunkz/cc-bot/releases/latest")!
@@ -113,6 +234,20 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertEqual(mock.requestCount, 1)
         XCTAssertEqual(testDefaults.double(forKey: UpdateChecker.lastCheckedAtDefaultsKey), now.timeIntervalSince1970)
         XCTAssertEqual(checker.latestVersion, "1.0.1")
+    }
+
+    @MainActor
+    func testFailedCheckDoesNotPersistLastCheckedAt() async {
+        let checker = UpdateChecker(
+            httpClient: MockHTTPClient(responses: []),
+            userDefaults: testDefaults,
+            now: { Date(timeIntervalSince1970: 3_000) }
+        )
+
+        await checker.check()
+
+        XCTAssertEqual(testDefaults.double(forKey: UpdateChecker.lastCheckedAtDefaultsKey), 0)
+        XCTAssertNotNil(checker.lastErrorMessage)
     }
 
     func testRuntimeEnvironmentDetectsXCTestConfiguration() {

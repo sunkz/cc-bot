@@ -44,6 +44,25 @@ enum FileUtilities {
         }
     }
 
+    static func writeOrRemoveItem(
+        _ data: Data?,
+        to url: URL,
+        fileManager: FileManager = .default
+    ) throws {
+        if let data {
+            try writeWithBackupRollback(data, to: url, fileManager: fileManager)
+        } else {
+            try removeItemIfExists(url, fileManager: fileManager)
+        }
+    }
+
+    static func removeDirectoryIfEmpty(_ url: URL, fileManager: FileManager = .default) throws {
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        let contents = try fileManager.contentsOfDirectory(atPath: url.path)
+        guard contents.isEmpty else { return }
+        try removeItemIfExists(url, fileManager: fileManager)
+    }
+
     static func captureSnapshots(for urls: [URL], fileManager: FileManager = .default) throws -> [Snapshot] {
         try urls.map { url in
             guard fileManager.fileExists(atPath: url.path) else {

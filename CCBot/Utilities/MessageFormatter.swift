@@ -18,8 +18,7 @@ enum MessageFormatter {
     static func notificationTitle(kind: NotificationKind, source: String, project: String) -> String {
         switch kind {
         case .completion:
-            let status = (source == Constants.sourceCodex) ? "本轮完成" : "已完成"
-            return "✅ [\(source)] [\(project)] \(status)"
+            return "✅ [\(source)] [\(project)] 已完成"
         case .approval:
             return "⏳ [\(source)] [\(project)] 待确认"
         case .input:
@@ -37,7 +36,8 @@ enum MessageFormatter {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
 
-        if let summary = summarizeCodexStructuredPayload(trimmed) {
+        if let object = parseCodexStructuredPayload(trimmed) {
+            let summary = summarizeJSONValue(object) ?? ""
             return String(stripMarkdown(summary).prefix(maxLength))
         }
         return prepare(trimmed, maxLength: maxLength)
@@ -60,12 +60,12 @@ enum MessageFormatter {
         return "\(head)…\(tail)"
     }
 
-    private static func summarizeCodexStructuredPayload(_ text: String) -> String? {
+    private static func parseCodexStructuredPayload(_ text: String) -> Any? {
         guard let first = text.first, first == "{" || first == "[" else { return nil }
         guard let data = text.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data)
         else { return nil }
-        return summarizeJSONValue(object)
+        return object
     }
 
     private static func summarizeJSONValue(_ value: Any) -> String? {

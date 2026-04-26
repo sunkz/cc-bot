@@ -25,22 +25,32 @@ cmd_generate() {
 }
 
 cmd_build() {
+    local build_log
+
     # Auto-generate if xcodeproj is missing
     if [ ! -d "${APP_NAME}.xcodeproj" ]; then
         cmd_generate
     fi
 
     echo "=> Building ${APP_NAME}..."
-    xcodebuild -project "${APP_NAME}.xcodeproj" \
+    build_log="$(mktemp "${TMPDIR:-/tmp}/ccbot-build.XXXXXX")"
+    if ! xcodebuild -project "${APP_NAME}.xcodeproj" \
         -scheme "$SCHEME" \
         -configuration Debug \
         -derivedDataPath "$BUILD_DIR" \
-        build \
-        | grep -E '(Build Succeeded|error:|warning:)' || true
+        build >"$build_log" 2>&1; then
+        grep -E '(Build Succeeded|error:|warning:)' "$build_log" || cat "$build_log"
+        echo "=> Build failed. Full log: $build_log"
+        exit 1
+    fi
+
+    grep -E '(Build Succeeded|error:|warning:)' "$build_log" || true
 
     if [ -d "$APP_PATH" ]; then
+        rm -f "$build_log"
         echo "=> Build succeeded: $APP_PATH"
     else
+        rm -f "$build_log"
         echo "=> Build failed. Run with full output:"
         echo "   xcodebuild -project ${APP_NAME}.xcodeproj -scheme $SCHEME build"
         exit 1
@@ -56,6 +66,10 @@ cmd_run() {
         lsof -i :62400 &>/dev/null || break
         sleep 0.3
     done
+    if lsof -i :62400 &>/dev/null; then
+        echo "=> Launch aborted: port 62400 is still in use."
+        exit 1
+    fi
 
     echo "=> Launching ${APP_NAME}..."
     open "$APP_PATH"

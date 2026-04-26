@@ -3,6 +3,102 @@ import XCTest
 @testable import CCBot
 
 final class HookServerTests: XCTestCase {
+    private func writeCodexRollout(
+        codexHome: URL,
+        threadID: String,
+        source: Any = "vscode",
+        taskCompleteTurnID: String? = nil,
+        taskCompleteMessage: String? = nil
+    ) throws -> URL {
+        let sessionsDir = codexHome
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent("2026", isDirectory: true)
+            .appendingPathComponent("04", isDirectory: true)
+            .appendingPathComponent("25", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let rolloutPath = sessionsDir.appendingPathComponent("rollout-2026-04-25T21-04-37-\(threadID).jsonl")
+        var lines: [Data] = []
+
+        let sessionMeta: [String: Any] = [
+            "timestamp": "2026-04-25T13:04:39.853Z",
+            "type": "session_meta",
+            "payload": [
+                "id": threadID,
+                "timestamp": "2026-04-25T13:04:37.745Z",
+                "cwd": "/Users/dev/code/demo",
+                "originator": "paseo",
+                "cli_version": "0.122.0",
+                "source": source,
+                "model_provider": "custom",
+            ],
+        ]
+        lines.append(try JSONSerialization.data(withJSONObject: sessionMeta))
+
+        if let taskCompleteTurnID, let taskCompleteMessage {
+            let taskComplete: [String: Any] = [
+                "timestamp": "2026-04-25T13:07:57.321Z",
+                "type": "event_msg",
+                "payload": [
+                    "type": "task_complete",
+                    "turn_id": taskCompleteTurnID,
+                    "last_agent_message": taskCompleteMessage,
+                    "completed_at": 1_777_122_477,
+                    "duration_ms": 199_539,
+                ],
+            ]
+            lines.append(try JSONSerialization.data(withJSONObject: taskComplete))
+        }
+
+        let data = lines.reduce(into: Data()) { partialResult, line in
+            partialResult.append(line)
+            partialResult.append(Data("\n".utf8))
+        }
+        try data.write(to: rolloutPath)
+        return rolloutPath
+    }
+
+    private func writeClaudeTranscript(
+        claudeHome: URL,
+        sessionID: String,
+        projectDirectory: String = "-Users-dev-code-demo",
+        userPrompt: String
+    ) throws -> URL {
+        let projectsDir = claudeHome
+            .appendingPathComponent("projects", isDirectory: true)
+            .appendingPathComponent(projectDirectory, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+
+        let transcriptURL = projectsDir.appendingPathComponent("\(sessionID).jsonl")
+        let userEvent: [String: Any] = [
+            "type": "user",
+            "sessionId": sessionID,
+            "message": [
+                "role": "user",
+                "content": [
+                    [
+                        "type": "text",
+                        "text": userPrompt,
+                    ],
+                ],
+            ],
+        ]
+        let lastPromptEvent: [String: Any] = [
+            "type": "last-prompt",
+            "sessionId": sessionID,
+            "lastPrompt": userPrompt.replacingOccurrences(of: "\n", with: " "),
+        ]
+
+        let lines = try [userEvent, lastPromptEvent]
+            .map { try JSONSerialization.data(withJSONObject: $0) }
+        let data = lines.reduce(into: Data()) { partialResult, line in
+            partialResult.append(line)
+            partialResult.append(Data("\n".utf8))
+        }
+        try data.write(to: transcriptURL)
+        return transcriptURL
+    }
+
     private func makePermissionFile(
         dir: URL,
         name: String,
@@ -102,36 +198,36 @@ final class HookServerTests: XCTestCase {
     }
 
     @MainActor
-    func testCodexDeliveryScopeKeepsSameLeafDirectoriesSeparate() {
+    func testCodexInputDeliveryScopeKeepsSameLeafDirectoriesSeparate() {
         let server = HookServer()
         let first = try! XCTUnwrap(server.makeCodexDelivery(json: [
-            "type": Constants.codexEventTurnComplete,
+            "type": Constants.codexEventInput,
             "cwd": "/Users/dev/code/demo",
-            "last-assistant-message": "done",
+            "input-messages": ["继续执行"],
         ]))
         let second = try! XCTUnwrap(server.makeCodexDelivery(json: [
-            "type": Constants.codexEventTurnComplete,
+            "type": Constants.codexEventInput,
             "cwd": "/tmp/worktrees/demo",
-            "last-assistant-message": "done",
+            "input-messages": ["继续执行"],
         ]))
 
         XCTAssertNotEqual(first.scopeKey, second.scopeKey)
     }
 
     @MainActor
-    func testCodexDeliveryScopeIncludesConversationIdentityWhenPresent() {
+    func testCodexInputDeliveryScopeIncludesConversationIdentityWhenPresent() {
         let server = HookServer()
         let first = try! XCTUnwrap(server.makeCodexDelivery(json: [
-            "type": Constants.codexEventTurnComplete,
+            "type": Constants.codexEventInput,
             "cwd": "/Users/dev/code/demo",
             "conversation_id": "conversation-a",
-            "last-assistant-message": "done",
+            "input-messages": ["继续执行"],
         ]))
         let second = try! XCTUnwrap(server.makeCodexDelivery(json: [
-            "type": Constants.codexEventTurnComplete,
+            "type": Constants.codexEventInput,
             "cwd": "/Users/dev/code/demo",
             "conversation_id": "conversation-b",
-            "last-assistant-message": "done",
+            "input-messages": ["继续执行"],
         ]))
 
         XCTAssertNotEqual(first.scopeKey, second.scopeKey)
@@ -193,21 +289,135 @@ final class HookServerTests: XCTestCase {
     }
 
     @MainActor
-    func testCodexCompletionDeliveryDoesNotThrottleDistinctRuns() {
+    func testCodexTurnCompleteUsesRootTaskCompleteMessage() async throws {
         let server = HookServer()
-        let first = try! XCTUnwrap(server.makeCodexDelivery(json: [
-            "type": Constants.codexEventTurnComplete,
-            "cwd": "/Users/dev/code/demo",
-            "last-assistant-message": "first result",
-        ]))
-        let second = try! XCTUnwrap(server.makeCodexDelivery(json: [
-            "type": Constants.codexEventTurnComplete,
-            "cwd": "/Users/dev/code/demo",
-            "last-assistant-message": "second result",
-        ]))
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: codexHome) }
 
-        XCTAssertFalse(server.shouldThrottle(delivery: first))
-        XCTAssertFalse(server.shouldThrottle(delivery: second))
+        _ = try writeCodexRollout(
+            codexHome: codexHome,
+            threadID: "thread-root",
+            taskCompleteTurnID: "turn-root",
+            taskCompleteMessage: "最终答复：主任务已完成"
+        )
+
+        let delivery = await server.makeCodexCompletionDelivery(
+            json: [
+            "type": Constants.codexEventTurnComplete,
+            "cwd": "/Users/dev/code/demo",
+            "thread-id": "thread-root",
+            "turn-id": "turn-root",
+            "last-assistant-message": #"{"exclude":[]}"#,
+            ],
+            codexHome: codexHome,
+            fileManager: .default,
+            pollInterval: .zero,
+            maxAttempts: 1
+        )
+
+        XCTAssertEqual(delivery?.kind, .completion)
+        XCTAssertEqual(delivery?.project, "demo")
+        XCTAssertEqual(delivery?.message, "最终答复：主任务已完成")
+    }
+
+    @MainActor
+    func testCodexTurnCompleteIgnoresSubagentRollout() async throws {
+        let server = HookServer()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: codexHome) }
+
+        _ = try writeCodexRollout(
+            codexHome: codexHome,
+            threadID: "thread-child",
+            source: [
+                "subagent": [
+                    "thread_spawn": [
+                        "parent_thread_id": "thread-parent",
+                        "depth": 1,
+                    ],
+                ],
+            ],
+            taskCompleteTurnID: "turn-child",
+            taskCompleteMessage: "子线程完成"
+        )
+
+        let delivery = await server.makeCodexCompletionDelivery(
+            json: [
+            "type": Constants.codexEventTurnComplete,
+            "cwd": "/Users/dev/code/demo",
+            "thread-id": "thread-child",
+            "turn-id": "turn-child",
+            "last-assistant-message": #"{"exclude":[]}"#,
+            ],
+            codexHome: codexHome,
+            fileManager: .default,
+            pollInterval: .zero,
+            maxAttempts: 1
+        )
+
+        XCTAssertNil(delivery)
+    }
+
+    @MainActor
+    func testCodexTurnCompleteWithoutMatchingTaskCompleteIsIgnored() async throws {
+        let server = HookServer()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: codexHome) }
+
+        _ = try writeCodexRollout(
+            codexHome: codexHome,
+            threadID: "thread-generic"
+        )
+
+        let delivery = await server.makeCodexCompletionDelivery(
+            json: [
+                "type": Constants.codexEventTurnComplete,
+                "cwd": "/Users/dev/code/demo",
+                "thread-id": "thread-generic",
+                "turn-id": "turn-generic",
+                "last-assistant-message": #"{"exclude":[]}"#,
+            ],
+            codexHome: codexHome,
+            fileManager: .default,
+            pollInterval: .zero,
+            maxAttempts: 1
+        )
+
+        XCTAssertNil(delivery)
+    }
+
+    @MainActor
+    func testCodexTurnCompleteFallsBackToGenericMessageWhenTaskCompleteMessageIsUnreadable() async throws {
+        let server = HookServer()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: codexHome) }
+
+        _ = try writeCodexRollout(
+            codexHome: codexHome,
+            threadID: "thread-fallback",
+            taskCompleteTurnID: "turn-fallback",
+            taskCompleteMessage: #"{"exclude":[]}"#
+        )
+
+        let delivery = await server.makeCodexCompletionDelivery(
+            json: [
+                "type": Constants.codexEventTurnComplete,
+                "cwd": "/Users/dev/code/demo",
+                "thread-id": "thread-fallback",
+                "turn-id": "turn-fallback",
+                "last-assistant-message": #"{"exclude":[]}"#,
+            ],
+            codexHome: codexHome,
+            fileManager: .default,
+            pollInterval: .zero,
+            maxAttempts: 1
+        )
+
+        XCTAssertEqual(delivery?.message, "Codex 任务已完成")
     }
 
     @MainActor
@@ -259,6 +469,70 @@ final class HookServerTests: XCTestCase {
 
         XCTAssertFalse(server.shouldThrottle(delivery: first))
         XCTAssertFalse(server.shouldThrottle(delivery: second))
+    }
+
+    @MainActor
+    func testClaudeStopDeliveryIgnoresMetadataTitleSession() throws {
+        let server = HookServer()
+        let claudeHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: claudeHome) }
+
+        let sessionID = "88fe5e65-72b2-414c-a6f3-9b7a3e2e7baf"
+        _ = try writeClaudeTranscript(
+            claudeHome: claudeHome,
+            sessionID: sessionID,
+            userPrompt: """
+            Generate metadata for a coding agent based on the user prompt.
+            Title: short descriptive label (<= 40 chars).
+            Return JSON only with a single field 'title'.
+
+            User prompt:
+            看看这个报错
+            """
+        )
+
+        let delivery = server.makeStopDelivery(
+            json: [
+                "cwd": "/Users/dev/code/demo",
+                "session_id": sessionID,
+                "last_assistant_message": #"{"title":"Xcode CoreSimulator版本不匹配错误"}"#,
+            ],
+            claudeHome: claudeHome,
+            fileManager: .default
+        )
+
+        XCTAssertNil(delivery)
+    }
+
+    @MainActor
+    func testClaudeStopDeliveryKeepsRegularSessionTranscript() throws {
+        let server = HookServer()
+        let claudeHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: claudeHome) }
+
+        let sessionID = "session-regular"
+        _ = try writeClaudeTranscript(
+            claudeHome: claudeHome,
+            sessionID: sessionID,
+            userPrompt: """
+            修一下 HookServer 的 stop 通知逻辑。
+            """
+        )
+
+        let delivery = try XCTUnwrap(server.makeStopDelivery(
+            json: [
+                "cwd": "/Users/dev/code/demo",
+                "session_id": sessionID,
+                "last_assistant_message": "已完成普通任务",
+            ],
+            claudeHome: claudeHome,
+            fileManager: .default
+        ))
+
+        XCTAssertEqual(delivery.message, "已完成普通任务")
+        XCTAssertEqual(delivery.eventType, "stop")
     }
 
     @MainActor
@@ -337,6 +611,34 @@ final class HookServerTests: XCTestCase {
         server.recordInteractiveStateIfNeeded(for: input, now: now)
 
         XCTAssertTrue(server.shouldSuppressCompletion(for: completion, now: now.addingTimeInterval(0.5)))
+    }
+
+    @MainActor
+    func testCodexOverallCompletionBypassesInteractiveSuppression() {
+        let server = HookServer()
+        let now = Date()
+        let approval = NotificationDelivery(
+            kind: .approval,
+            source: Constants.sourceCodex,
+            project: "demo",
+            scopeKey: "/Users/dev/code/demo|thread-id=thread-root",
+            message: "命令: git push",
+            eventType: Constants.codexEventApproval,
+            throttleKey: nil
+        )
+        let completion = NotificationDelivery(
+            kind: .completion,
+            source: Constants.sourceCodex,
+            project: "demo",
+            scopeKey: "/Users/dev/code/demo|thread-id=thread-root",
+            message: "Codex 任务已完成",
+            eventType: Constants.codexEventTurnComplete,
+            throttleKey: nil
+        )
+
+        server.recordInteractiveStateIfNeeded(for: approval, now: now)
+
+        XCTAssertFalse(server.shouldSuppressCompletion(for: completion, now: now.addingTimeInterval(0.1)))
     }
 
     @MainActor

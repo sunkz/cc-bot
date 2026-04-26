@@ -14,7 +14,9 @@ struct MenuBarView: View {
 
     @State private var tokenInput: String = ""
     @State private var hookInstalled = HookInstaller.isInstalled()
+    @State private var hookManagedArtifacts = HookInstaller.hasManagedArtifacts()
     @State private var codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
+    @State private var codexNotifyManagedArtifacts = CodexNotifyInstaller.hasManagedArtifacts()
     @State private var hookPathDisclosureState = HookPathDisclosureState()
     @State private var alertMessage: String?
     @State private var tokenPersistTask: Task<Void, Never>?
@@ -95,8 +97,7 @@ struct MenuBarView: View {
         .frame(width: 260)
         .task {
             tokenInput = telegramBot.token
-            hookInstalled = HookInstaller.isInstalled()
-            codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
+            refreshInstallerStates()
             await updateChecker.check()
         }
         .alert("CCBot", isPresented: .init(
@@ -168,6 +169,7 @@ struct MenuBarView: View {
             hookRow(
                 title: "Claude Code Hook",
                 isInstalled: hookInstalled,
+                hasManagedArtifacts: hookManagedArtifacts,
                 disclosureKind: .claude,
                 paths: claudeHookPaths,
                 action: toggleHook
@@ -176,6 +178,7 @@ struct MenuBarView: View {
             hookRow(
                 title: "Codex Hook",
                 isInstalled: codexNotifyInstalled,
+                hasManagedArtifacts: codexNotifyManagedArtifacts,
                 disclosureKind: .codex,
                 paths: codexHookPaths,
                 action: toggleCodexNotify
@@ -229,6 +232,7 @@ struct MenuBarView: View {
     private func hookRow(
         title: String,
         isInstalled: Bool,
+        hasManagedArtifacts: Bool,
         disclosureKind: HookPathDisclosureKind,
         paths: [String],
         action: @escaping () -> Void
@@ -236,14 +240,14 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Circle()
-                    .fill(isInstalled ? .green : .gray)
+                    .fill(installerIndicatorColor(isInstalled: isInstalled, hasManagedArtifacts: hasManagedArtifacts))
                     .frame(width: 8, height: 8)
                 Text(title)
                     .font(.callout)
 
                 Spacer()
 
-                if isInstalled {
+                if isInstalled || hasManagedArtifacts {
                     Button {
                         hookPathDisclosureState.toggle(disclosureKind)
                     } label: {
@@ -255,13 +259,13 @@ struct MenuBarView: View {
                     .help(hookPathDisclosureState.isExpanded(disclosureKind) ? "收起安装路径" : "展开安装路径")
                 }
 
-                Button(isInstalled ? "卸载" : "安装") {
+                Button(isInstalled || hasManagedArtifacts ? "卸载" : "安装") {
                     action()
                 }
                 .controlSize(.small)
             }
 
-            if isInstalled && hookPathDisclosureState.isExpanded(disclosureKind) {
+            if (isInstalled || hasManagedArtifacts) && hookPathDisclosureState.isExpanded(disclosureKind) {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(paths, id: \.self) { path in
                         Text(path)
@@ -303,15 +307,32 @@ struct MenuBarView: View {
         .accessibilityLabel(accessibilityLabel ?? title)
     }
 
+    private func refreshInstallerStates() {
+        hookInstalled = HookInstaller.isInstalled()
+        hookManagedArtifacts = HookInstaller.hasManagedArtifacts()
+        codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
+        codexNotifyManagedArtifacts = CodexNotifyInstaller.hasManagedArtifacts()
+    }
+
+    private func installerIndicatorColor(isInstalled: Bool, hasManagedArtifacts: Bool) -> Color {
+        if isInstalled {
+            return .green
+        }
+        if hasManagedArtifacts {
+            return .orange
+        }
+        return .gray
+    }
+
     private func toggleHook() {
         do {
-            if hookInstalled {
+            if hookInstalled || hookManagedArtifacts {
                 try HookInstaller.uninstall()
             } else {
                 try HookInstaller.install()
             }
-            hookInstalled = HookInstaller.isInstalled()
-            if !hookInstalled {
+            refreshInstallerStates()
+            if !(hookInstalled || hookManagedArtifacts) {
                 hookPathDisclosureState.setExpanded(.claude, isExpanded: false)
             }
         } catch HookInstaller.InstallError.claudeNotInstalled {
@@ -325,13 +346,13 @@ struct MenuBarView: View {
 
     private func toggleCodexNotify() {
         do {
-            if codexNotifyInstalled {
+            if codexNotifyInstalled || codexNotifyManagedArtifacts {
                 try CodexNotifyInstaller.uninstall()
             } else {
                 try CodexNotifyInstaller.install()
             }
-            codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
-            if !codexNotifyInstalled {
+            refreshInstallerStates()
+            if !(codexNotifyInstalled || codexNotifyManagedArtifacts) {
                 hookPathDisclosureState.setExpanded(.codex, isExpanded: false)
             }
         } catch CodexNotifyInstaller.InstallError.codexNotInstalled {

@@ -113,9 +113,10 @@ struct HookInstaller {
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     ) throws {
         let paths = paths(for: homeDirectory)
+        let hadSettings = fm.fileExists(atPath: paths.settingsPath.path)
         let cleanedSettings: Data? =
-            if fm.fileExists(atPath: paths.settingsPath.path) {
-                try removeHooks(from: Data(contentsOf: paths.settingsPath))
+            if hadSettings {
+                try removableSettingsData(afterRemovingManagedHooksFrom: Data(contentsOf: paths.settingsPath))
             } else {
                 nil
             }
@@ -128,13 +129,15 @@ struct HookInstaller {
             try FileUtilities.removeItemIfExists(paths.notificationPath, fileManager: fm)
             try FileUtilities.removeItemIfExists(paths.stopPath, fileManager: fm)
             try FileUtilities.removeItemIfExists(paths.legacyPreToolUsePath, fileManager: fm)
-            if let cleanedSettings {
-                try FileUtilities.writeWithBackupRollback(cleanedSettings, to: paths.settingsPath, fileManager: fm)
+            if hadSettings {
+                try FileUtilities.writeOrRemoveItem(cleanedSettings, to: paths.settingsPath, fileManager: fm)
             }
         } catch {
             try? FileUtilities.restoreSnapshots(snapshots, fileManager: fm)
             throw error
         }
+
+        try? FileUtilities.removeDirectoryIfEmpty(paths.hooksDir, fileManager: fm)
     }
 
     static func removeHooks(from data: Data) throws -> Data {
@@ -186,6 +189,24 @@ struct HookInstaller {
         return hasRequiredHookEntries(in: settingsData)
     }
 
+    static func hasManagedArtifacts(
+        fileManager fm: FileManager = .default,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Bool {
+        let paths = paths(for: homeDirectory)
+        if fm.fileExists(atPath: paths.notificationPath.path)
+            || fm.fileExists(atPath: paths.stopPath.path)
+            || fm.fileExists(atPath: paths.legacyPreToolUsePath.path)
+        {
+            return true
+        }
+
+        guard let settingsData = try? Data(contentsOf: paths.settingsPath) else {
+            return false
+        }
+        return hasManagedHookEntries(in: settingsData)
+    }
+
     /// Overwrite hook scripts with latest version if already installed.
     static func updateScriptsIfInstalled(
         fileManager fm: FileManager = .default,
@@ -193,13 +214,16 @@ struct HookInstaller {
     ) throws {
         guard isInstalled(fileManager: fm, homeDirectory: homeDirectory) else { return }
         let paths = paths(for: homeDirectory)
+        let existingSettings = try Data(contentsOf: paths.settingsPath)
+        let updatedSettings = try mergeHooks(into: removeHooks(from: existingSettings))
         let snapshots = try FileUtilities.captureSnapshots(
-            for: [paths.notificationPath, paths.stopPath, paths.legacyPreToolUsePath],
+            for: [paths.notificationPath, paths.stopPath, paths.legacyPreToolUsePath, paths.settingsPath],
             fileManager: fm
         )
         do {
             try FileUtilities.removeItemIfExists(paths.legacyPreToolUsePath, fileManager: fm)
             try writeScripts(fileManager: fm, paths: paths)
+            try FileUtilities.writeWithBackupRollback(updatedSettings, to: paths.settingsPath, fileManager: fm)
         } catch {
             try? FileUtilities.restoreSnapshots(snapshots, fileManager: fm)
             throw error
@@ -222,6 +246,12 @@ struct HookInstaller {
         return json
     }
 
+    private static func removableSettingsData(afterRemovingManagedHooksFrom data: Data) throws -> Data? {
+        let cleaned = try removeHooks(from: data)
+        let json = try parseSettingsJSON(from: cleaned)
+        return json.isEmpty ? nil : cleaned
+    }
+
     private static func writeScripts(fileManager fm: FileManager, paths: Paths) throws {
         try fm.createDirectory(at: paths.hooksDir, withIntermediateDirectories: true)
         try notificationScript.write(to: paths.notificationPath, atomically: true, encoding: .utf8)
@@ -236,6 +266,15 @@ struct HookInstaller {
         else { return false }
         return hasHookCommand(in: hooks["Notification"], command: "bash ~/.claude/hooks/cc-bot-notification.sh")
             && hasHookCommand(in: hooks["Stop"], command: "bash ~/.claude/hooks/cc-bot-stop.sh")
+    }
+
+    private static func hasManagedHookEntries(in data: Data) -> Bool {
+        guard let json = try? parseSettingsJSON(from: data),
+              let hooks = json["hooks"] as? [String: Any]
+        else { return false }
+        return hasHookCommand(in: hooks["Notification"], command: "bash ~/.claude/hooks/cc-bot-notification.sh")
+            || hasHookCommand(in: hooks["Stop"], command: "bash ~/.claude/hooks/cc-bot-stop.sh")
+            || hasHookCommand(in: hooks["PreToolUse"], command: "bash ~/.claude/hooks/cc-bot-pre-tool-use.sh")
     }
 
     private static func hasHookCommand(in value: Any?, command: String) -> Bool {

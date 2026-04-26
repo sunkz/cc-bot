@@ -1,6 +1,14 @@
 import Foundation
 
 struct CodexNotifyInstaller {
+    private static let managedNotifyTildePath = "~/.codex/hooks/cc-bot-notify.sh"
+    private static let permissionRequestCommand = "bash ~/.codex/hooks/cc-bot-permission-request.sh"
+    private static let permissionRequestMatcher = ".*"
+    private static let permissionRequestStatusMessage = "Sending approval notification"
+    private static let previousNotifyFlag = "--previous-notify"
+    private static let computerUseClientExecutableName = "SkyComputerUseClient"
+    private static let computerUseTurnEndedEvent = "turn-ended"
+
     private struct Paths {
         let codexDir: URL
         let hooksDir: URL
@@ -24,6 +32,12 @@ struct CodexNotifyInstaller {
     }
 
     private static let managedHooksFeatureLine = "codex_hooks = true # ccbot"
+
+    private enum ManagedNotifyOwnership {
+        case none
+        case direct
+        case wrapped
+    }
 
     static var notifyScript: String {
         """
@@ -96,21 +110,20 @@ struct CodexNotifyInstaller {
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     ) throws {
         let paths = paths(for: homeDirectory)
-        let cleanedConfig: Data?
-        if fm.fileExists(atPath: paths.configPath.path) {
-            let existingConfig = try Data(contentsOf: paths.configPath)
-            let cleanedNotify = try removeNotify(from: existingConfig, paths: paths)
-            cleanedConfig = try removeManagedHooksFeature(from: cleanedNotify)
-        } else {
-            cleanedConfig = nil
-        }
-
-        let cleanedHooks: Data?
-        if fm.fileExists(atPath: paths.hooksPath.path) {
-            cleanedHooks = try removePermissionRequestHook(from: Data(contentsOf: paths.hooksPath))
-        } else {
-            cleanedHooks = nil
-        }
+        let hadConfig = fm.fileExists(atPath: paths.configPath.path)
+        let hadHooks = fm.fileExists(atPath: paths.hooksPath.path)
+        let cleanedConfig: Data? =
+            if hadConfig {
+                try removableConfigData(from: Data(contentsOf: paths.configPath), paths: paths)
+            } else {
+                nil
+            }
+        let cleanedHooks: Data? =
+            if hadHooks {
+                try removableHooksData(from: Data(contentsOf: paths.hooksPath))
+            } else {
+                nil
+            }
         let snapshots = try FileUtilities.captureSnapshots(
             for: [
                 paths.notifyScriptPath,
@@ -124,16 +137,18 @@ struct CodexNotifyInstaller {
         do {
             try FileUtilities.removeItemIfExists(paths.notifyScriptPath, fileManager: fm)
             try FileUtilities.removeItemIfExists(paths.permissionRequestScriptPath, fileManager: fm)
-            if let cleanedConfig {
-                try FileUtilities.writeWithBackupRollback(cleanedConfig, to: paths.configPath, fileManager: fm)
+            if hadConfig {
+                try FileUtilities.writeOrRemoveItem(cleanedConfig, to: paths.configPath, fileManager: fm)
             }
-            if let cleanedHooks {
-                try FileUtilities.writeWithBackupRollback(cleanedHooks, to: paths.hooksPath, fileManager: fm)
+            if hadHooks {
+                try FileUtilities.writeOrRemoveItem(cleanedHooks, to: paths.hooksPath, fileManager: fm)
             }
         } catch {
             try? FileUtilities.restoreSnapshots(snapshots, fileManager: fm)
             throw error
         }
+
+        try? FileUtilities.removeDirectoryIfEmpty(paths.hooksDir, fileManager: fm)
     }
 
     static func isInstalled(
@@ -184,7 +199,39 @@ struct CodexNotifyInstaller {
     }
 
     static func mergeNotify(into data: Data) throws -> Data {
-        try mergeNotify(into: data, paths: paths(for: FileManager.default.homeDirectoryForCurrentUser))
+        try mergeNotify(into: data, homeDirectory: FileManager.default.homeDirectoryForCurrentUser)
+    }
+
+    static func mergeNotify(into data: Data, homeDirectory: URL) throws -> Data {
+        try mergeNotify(into: data, paths: paths(for: homeDirectory))
+    }
+
+    static func hasManagedArtifacts(
+        fileManager fm: FileManager = .default,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Bool {
+        let paths = paths(for: homeDirectory)
+
+        if fm.fileExists(atPath: paths.notifyScriptPath.path)
+            || fm.fileExists(atPath: paths.permissionRequestScriptPath.path)
+        {
+            return true
+        }
+
+        if let configContents = try? String(contentsOf: paths.configPath, encoding: .utf8) {
+            let ownsManagedNotify = notifyLineRange(in: configContents).map {
+                let line = String(configContents[$0])
+                return managedNotifyOwnership(of: line, paths: paths) != .none
+            } ?? false
+            if ownsManagedNotify || configContents.contains(managedHooksFeatureLine) {
+                return true
+            }
+        }
+
+        guard let hooksData = try? Data(contentsOf: paths.hooksPath) else {
+            return false
+        }
+        return hasPermissionRequestHook(in: hooksData)
     }
 
     private static func mergeNotify(into data: Data, paths: Paths) throws -> Data {
@@ -193,13 +240,21 @@ struct CodexNotifyInstaller {
 
         if let range = notifyLineRange(in: original) {
             let existingLine = String(original[range])
-            guard existingLine.contains(paths.notifyScriptPath.path) || existingLine.contains("cc-bot-notify.sh") else {
+            switch managedNotifyOwnership(of: existingLine, paths: paths) {
+            case .direct:
+                var updated = original
+                updated.replaceSubrange(range, with: canonicalLine)
+                return Data(updated.utf8)
+            case .wrapped:
+                return data
+            case .none:
+                if let augmentedLine = augmentComputerUseNotifyLine(existingLine, paths: paths) {
+                    var updated = original
+                    updated.replaceSubrange(range, with: augmentedLine)
+                    return Data(updated.utf8)
+                }
                 throw InstallError.notifyAlreadyConfigured
             }
-
-            var updated = original
-            updated.replaceSubrange(range, with: canonicalLine)
-            return Data(updated.utf8)
         }
 
         if original.isEmpty {
@@ -225,43 +280,46 @@ struct CodexNotifyInstaller {
         guard let range = notifyLineRange(in: original) else { return data }
 
         let line = String(original[range])
-        guard line.contains(paths.notifyScriptPath.path) || line.contains("cc-bot-notify.sh") else {
+        switch managedNotifyOwnership(of: line, paths: paths) {
+        case .none:
             return data
+        case .direct:
+            var updated = original
+            let lineStart = range.lowerBound
+            let lineEnd = updated[lineStart...].firstIndex(of: "\n") ?? updated.endIndex
+            let removalEnd = lineEnd < updated.endIndex ? updated.index(after: lineEnd) : lineEnd
+            updated.removeSubrange(lineStart..<removalEnd)
+
+            while updated.contains("\n\n\n") {
+                updated = updated.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+            }
+
+            return Data(updated.utf8)
+        case .wrapped:
+            guard let cleanedLine = removingManagedPreviousNotify(from: line, paths: paths) else {
+                return data
+            }
+
+            var updated = original
+            updated.replaceSubrange(range, with: cleanedLine)
+            return Data(updated.utf8)
         }
-
-        var updated = original
-        let lineStart = range.lowerBound
-        let lineEnd = updated[lineStart...].firstIndex(of: "\n") ?? updated.endIndex
-        let removalEnd = lineEnd < updated.endIndex ? updated.index(after: lineEnd) : lineEnd
-        updated.removeSubrange(lineStart..<removalEnd)
-
-        while updated.contains("\n\n\n") {
-            updated = updated.replacingOccurrences(of: "\n\n\n", with: "\n\n")
-        }
-
-        return Data(updated.utf8)
     }
 
     static func mergePermissionRequestHook(into data: Data) throws -> Data {
         var json = try parseHooksJSON(from: data)
         var hooks = json["hooks"] as? [String: Any] ?? [:]
 
-        let command = "bash ~/.codex/hooks/cc-bot-permission-request.sh"
         var entries = hooks["PermissionRequest"] as? [[String: Any]] ?? []
-        let alreadyPresent = entries.contains { entry in
-            let hookList = entry["hooks"] as? [[String: Any]] ?? []
-            return hookList.contains { ($0["command"] as? String) == command }
+        entries = entries.compactMap { entry in
+            var mutableEntry = entry
+            var hookList = mutableEntry["hooks"] as? [[String: Any]] ?? []
+            hookList.removeAll { ($0["command"] as? String) == permissionRequestCommand }
+            guard !hookList.isEmpty else { return nil }
+            mutableEntry["hooks"] = hookList
+            return mutableEntry
         }
-        if !alreadyPresent {
-            entries.append([
-                "matcher": ".*",
-                "hooks": [[
-                    "type": "command",
-                    "command": command,
-                    "statusMessage": "Sending approval notification",
-                ]],
-            ])
-        }
+        entries.append(permissionRequestEntry())
 
         hooks["PermissionRequest"] = entries
         json["hooks"] = hooks
@@ -272,12 +330,11 @@ struct CodexNotifyInstaller {
         var json = try parseHooksJSON(from: data)
         guard var hooks = json["hooks"] as? [String: Any] else { return data }
 
-        let command = "bash ~/.codex/hooks/cc-bot-permission-request.sh"
         if var entries = hooks["PermissionRequest"] as? [[String: Any]] {
             entries = entries.compactMap { entry in
                 var mutableEntry = entry
                 var hookList = mutableEntry["hooks"] as? [[String: Any]] ?? []
-                hookList.removeAll { ($0["command"] as? String) == command }
+                hookList.removeAll { ($0["command"] as? String) == permissionRequestCommand }
                 guard !hookList.isEmpty else { return nil }
                 mutableEntry["hooks"] = hookList
                 return mutableEntry
@@ -357,6 +414,19 @@ struct CodexNotifyInstaller {
         return Data(renderTomlLines(lines).utf8)
     }
 
+    private static func removableConfigData(from data: Data, paths: Paths) throws -> Data? {
+        let withoutNotify = try removeNotify(from: data, paths: paths)
+        let cleaned = try removeManagedHooksFeature(from: withoutNotify)
+        let trimmed = String(decoding: cleaned, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : cleaned
+    }
+
+    private static func removableHooksData(from data: Data) throws -> Data? {
+        let cleaned = try removePermissionRequestHook(from: data)
+        let json = try parseHooksJSON(from: cleaned)
+        return json.isEmpty ? nil : cleaned
+    }
+
     private static func notifyLine(for paths: Paths) -> String {
         #"notify = ["bash", "\#(paths.notifyScriptPath.path)"]"#
     }
@@ -412,7 +482,7 @@ struct CodexNotifyInstaller {
     private static func hasManagedNotify(in config: String, paths: Paths) -> Bool {
         notifyLineRange(in: config).map {
             let line = String(config[$0])
-            return line.contains(paths.notifyScriptPath.path) || line.contains("cc-bot-notify.sh")
+            return managedNotifyOwnership(of: line, paths: paths) != .none
         } ?? false
     }
 
@@ -428,7 +498,198 @@ struct CodexNotifyInstaller {
 
         return entries.contains { entry in
             let hookList = entry["hooks"] as? [[String: Any]] ?? []
-            return hookList.contains { ($0["command"] as? String) == "bash ~/.codex/hooks/cc-bot-permission-request.sh" }
+            return hookList.contains { ($0["command"] as? String) == permissionRequestCommand }
         }
+    }
+
+    private static func managedNotifyOwnership(of line: String, paths: Paths) -> ManagedNotifyOwnership {
+        if hasDirectManagedNotify(in: line, paths: paths) {
+            return .direct
+        }
+
+        if hasWrappedManagedNotify(in: line, paths: paths) {
+            return .wrapped
+        }
+
+        let normalizedLine = line.replacingOccurrences(of: #"\/"#, with: "/")
+        guard containsManagedNotifyPath(normalizedLine, paths: paths) else {
+            return .none
+        }
+        return normalizedLine.contains("--previous-notify") ? .wrapped : .direct
+    }
+
+    private static func hasDirectManagedNotify(in line: String, paths: Paths) -> Bool {
+        guard let arguments = parseNotifyArguments(from: line), arguments.count >= 2 else {
+            return false
+        }
+
+        return arguments[0] == "bash" && containsManagedNotifyPath(arguments[1], paths: paths)
+    }
+
+    private static func hasWrappedManagedNotify(in line: String, paths: Paths) -> Bool {
+        guard let arguments = parseNotifyArguments(from: line),
+              let previousNotifyIndex = arguments.firstIndex(of: previousNotifyFlag),
+              arguments.indices.contains(previousNotifyIndex + 1)
+        else {
+            return false
+        }
+
+        return containsManagedNotifyPath(arguments[previousNotifyIndex + 1], paths: paths)
+    }
+
+    private static func containsManagedNotifyPath(_ value: String, paths: Paths) -> Bool {
+        let normalizedValue = value.replacingOccurrences(of: #"\/"#, with: "/")
+        return normalizedValue.contains(paths.notifyScriptPath.path)
+            || normalizedValue.contains(managedNotifyTildePath)
+    }
+
+    private static func removingManagedPreviousNotify(from line: String, paths: Paths) -> String? {
+        guard var arguments = parseNotifyArguments(from: line),
+              let previousNotifyIndex = arguments.firstIndex(of: previousNotifyFlag),
+              arguments.indices.contains(previousNotifyIndex + 1),
+              containsManagedNotifyPath(arguments[previousNotifyIndex + 1], paths: paths)
+        else {
+            return nil
+        }
+
+        arguments.removeSubrange(previousNotifyIndex...previousNotifyIndex + 1)
+        return renderNotifyLine(arguments)
+    }
+
+    private static func augmentComputerUseNotifyLine(_ line: String, paths: Paths) -> String? {
+        guard var arguments = parseNotifyArguments(from: line),
+              isComputerUseTurnEndedNotify(arguments),
+              !arguments.contains(previousNotifyFlag),
+              let managedNotifyCommand = renderJSONStringArrayLiteral(["bash", paths.notifyScriptPath.path])
+        else {
+            return nil
+        }
+
+        arguments.append(previousNotifyFlag)
+        arguments.append(managedNotifyCommand)
+        return renderNotifyLine(arguments)
+    }
+
+    private static func parseNotifyArguments(from line: String) -> [String]? {
+        guard let start = line.firstIndex(of: "["),
+              let end = line.lastIndex(of: "]"),
+              start < end
+        else {
+            return nil
+        }
+
+        let arrayContents = String(line[line.index(after: start)..<end])
+        let pattern = #""((?:\\.|[^"\\])*)""#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return nil
+        }
+
+        let nsRange = NSRange(arrayContents.startIndex..<arrayContents.endIndex, in: arrayContents)
+        let matches = regex.matches(in: arrayContents, range: nsRange)
+        guard !matches.isEmpty else {
+            return []
+        }
+
+        var arguments: [String] = []
+        arguments.reserveCapacity(matches.count)
+        for match in matches {
+            guard let rawRange = Range(match.range(at: 1), in: arrayContents) else {
+                return nil
+            }
+            let rawValue = String(arrayContents[rawRange])
+            let wrappedValue = "[\"\(rawValue)\"]"
+            guard let data = wrappedValue.data(using: .utf8),
+                  let values = try? JSONSerialization.jsonObject(with: data) as? [String]
+            else {
+                return nil
+            }
+            guard let value = values.first else {
+                return nil
+            }
+            arguments.append(value)
+        }
+        return arguments
+    }
+
+    private static func isComputerUseTurnEndedNotify(_ arguments: [String]) -> Bool {
+        guard arguments.count >= 2 else {
+            return false
+        }
+
+        let executableName = URL(fileURLWithPath: arguments[0]).lastPathComponent
+        return executableName == computerUseClientExecutableName
+            && arguments[1] == computerUseTurnEndedEvent
+    }
+
+    private static func renderNotifyLine(_ arguments: [String]) -> String? {
+        let renderedArguments = arguments.compactMap(renderTOMLStringLiteral)
+        guard renderedArguments.count == arguments.count else {
+            return nil
+        }
+
+        return "notify = [\(renderedArguments.joined(separator: ", "))]"
+    }
+
+    private static func renderTOMLStringLiteral(_ value: String) -> String? {
+        guard let escaped = escapeStringLiteral(value) else {
+            return nil
+        }
+
+        return "\"\(escaped)\""
+    }
+
+    private static func renderJSONStringArrayLiteral(_ values: [String]) -> String? {
+        let renderedValues = values.compactMap { value in
+            escapeStringLiteral(value).map { "\"\($0)\"" }
+        }
+        guard renderedValues.count == values.count else {
+            return nil
+        }
+
+        return "[\(renderedValues.joined(separator: ","))]"
+    }
+
+    private static func escapeStringLiteral(_ value: String) -> String? {
+        var escaped = ""
+        escaped.reserveCapacity(value.count)
+
+        for scalar in value.unicodeScalars {
+            switch scalar.value {
+            case 0x08:
+                escaped.append(#"\b"#)
+            case 0x09:
+                escaped.append(#"\t"#)
+            case 0x0A:
+                escaped.append(#"\n"#)
+            case 0x0C:
+                escaped.append(#"\f"#)
+            case 0x0D:
+                escaped.append(#"\r"#)
+            case 0x22:
+                escaped.append(#"\""#)
+            case 0x5C:
+                escaped.append(#"\\"#)
+            case 0x00...0x1F:
+                let hex = String(scalar.value, radix: 16, uppercase: false)
+                let padded = String(repeating: "0", count: 4 - hex.count) + hex
+                escaped.append(#"\u"#)
+                escaped.append(padded)
+            default:
+                escaped.append(String(scalar))
+            }
+        }
+
+        return escaped
+    }
+
+    private static func permissionRequestEntry() -> [String: Any] {
+        [
+            "matcher": permissionRequestMatcher,
+            "hooks": [[
+                "type": "command",
+                "command": permissionRequestCommand,
+                "statusMessage": permissionRequestStatusMessage,
+            ]],
+        ]
     }
 }

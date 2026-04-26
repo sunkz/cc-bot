@@ -8,6 +8,7 @@ final class HookInstallerTests: XCTestCase {
         let settingsPath: URL
         let notificationPath: URL
         let stopPath: URL
+        let legacyPreToolUsePath: URL
     }
 
     private func makeSandbox() throws -> Sandbox {
@@ -21,7 +22,8 @@ final class HookInstallerTests: XCTestCase {
             hooksDir: hooksDir,
             settingsPath: claudeDir.appendingPathComponent("settings.json"),
             notificationPath: hooksDir.appendingPathComponent("cc-bot-notification.sh"),
-            stopPath: hooksDir.appendingPathComponent("cc-bot-stop.sh")
+            stopPath: hooksDir.appendingPathComponent("cc-bot-stop.sh"),
+            legacyPreToolUsePath: hooksDir.appendingPathComponent("cc-bot-pre-tool-use.sh")
         )
     }
 
@@ -144,6 +146,140 @@ final class HookInstallerTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: sandbox.notificationPath, encoding: .utf8), "notification-original")
         XCTAssertEqual(try String(contentsOf: sandbox.stopPath, encoding: .utf8), "stop-original")
         XCTAssertEqual(try String(contentsOf: sandbox.settingsPath, encoding: .utf8), #"{"hooks":"#)
+    }
+
+    func testUninstallDeletesSettingsFileWhenOnlyManagedHooksRemain() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notification-original", to: sandbox.notificationPath)
+        try writeScript("stop-original", to: sandbox.stopPath)
+        let installedSettings = try HookInstaller.mergeHooks(into: Data("{}".utf8))
+        try installedSettings.write(to: sandbox.settingsPath, options: .atomic)
+
+        try HookInstaller.uninstall(fileManager: .default, homeDirectory: sandbox.root)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.settingsPath.path))
+    }
+
+    func testUninstallPreservesSettingsFileWhenForeignContentRemains() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notification-original", to: sandbox.notificationPath)
+        try writeScript("stop-original", to: sandbox.stopPath)
+        try """
+        {
+          "permissions": { "allow": ["Bash"] },
+          "hooks": {
+            "Notification": [
+              {
+                "matcher": "",
+                "hooks": [
+                  {"type": "command", "command": "bash ~/.claude/hooks/cc-bot-notification.sh"},
+                  {"type": "command", "command": "echo foreign"}
+                ]
+              }
+            ],
+            "Stop": [
+              {
+                "matcher": "",
+                "hooks": [
+                  {"type": "command", "command": "bash ~/.claude/hooks/cc-bot-stop.sh"}
+                ]
+              }
+            ]
+          }
+        }
+        """.write(to: sandbox.settingsPath, atomically: true, encoding: .utf8)
+
+        try HookInstaller.uninstall(fileManager: .default, homeDirectory: sandbox.root)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sandbox.settingsPath.path))
+        let text = try String(contentsOf: sandbox.settingsPath, encoding: .utf8)
+        XCTAssertTrue(text.contains(#""permissions""#))
+        XCTAssertTrue(text.contains("echo foreign"))
+        XCTAssertFalse(text.contains("cc-bot-notification.sh"))
+        XCTAssertFalse(text.contains("cc-bot-stop.sh"))
+    }
+
+    func testUninstallDeletesEmptyHooksDirectoryButKeepsForeignFiles() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notification-original", to: sandbox.notificationPath)
+        try writeScript("stop-original", to: sandbox.stopPath)
+        let installedSettings = try HookInstaller.mergeHooks(into: Data("{}".utf8))
+        try installedSettings.write(to: sandbox.settingsPath, options: .atomic)
+
+        try HookInstaller.uninstall(fileManager: .default, homeDirectory: sandbox.root)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.hooksDir.path))
+
+        try FileManager.default.createDirectory(at: sandbox.hooksDir, withIntermediateDirectories: true)
+        try writeScript("foreign", to: sandbox.hooksDir.appendingPathComponent("foreign.sh"))
+        try writeScript("notification-original", to: sandbox.notificationPath)
+        try writeScript("stop-original", to: sandbox.stopPath)
+        try installedSettings.write(to: sandbox.settingsPath, options: .atomic)
+
+        try HookInstaller.uninstall(fileManager: .default, homeDirectory: sandbox.root)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sandbox.hooksDir.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sandbox.hooksDir.appendingPathComponent("foreign.sh").path))
+    }
+
+    func testUpdateScriptsIfInstalledRemovesLegacyPreToolUseRegistration() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notification-original", to: sandbox.notificationPath)
+        try writeScript("stop-original", to: sandbox.stopPath)
+        try writeScript("legacy-original", to: sandbox.legacyPreToolUsePath)
+
+        let installed = try HookInstaller.mergeHooks(into: Data("{}".utf8))
+        let jsonObject = try XCTUnwrap(JSONSerialization.jsonObject(with: installed) as? [String: Any])
+        var hooks = try XCTUnwrap(jsonObject["hooks"] as? [String: Any])
+        hooks["PreToolUse"] = [[
+            "matcher": "",
+            "hooks": [[
+                "type": "command",
+                "command": "bash ~/.claude/hooks/cc-bot-pre-tool-use.sh",
+            ]],
+        ]]
+
+        var mutated = jsonObject
+        mutated["hooks"] = hooks
+        let legacySettings = try JSONSerialization.data(withJSONObject: mutated, options: [.prettyPrinted, .sortedKeys])
+        try legacySettings.write(to: sandbox.settingsPath, options: .atomic)
+
+        try HookInstaller.updateScriptsIfInstalled(fileManager: .default, homeDirectory: sandbox.root)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.legacyPreToolUsePath.path))
+
+        let updatedData = try Data(contentsOf: sandbox.settingsPath)
+        let updatedObject = try XCTUnwrap(JSONSerialization.jsonObject(with: updatedData) as? [String: Any])
+        let updatedHooks = try XCTUnwrap(updatedObject["hooks"] as? [String: Any])
+        XCTAssertNil(updatedHooks["PreToolUse"])
+        XCTAssertTrue(HookInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
+    }
+
+    func testHasManagedArtifactsDetectsLegacyScriptWithoutInstalledState() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("legacy-original", to: sandbox.legacyPreToolUsePath)
+
+        XCTAssertFalse(HookInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
+        XCTAssertTrue(HookInstaller.hasManagedArtifacts(fileManager: .default, homeDirectory: sandbox.root))
+    }
+
+    func testHasManagedArtifactsDetectsRegisteredHooksInEscapedSettingsJSONWithoutScripts() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        let installedSettings = try HookInstaller.mergeHooks(into: Data("{}".utf8))
+        try installedSettings.write(to: sandbox.settingsPath, options: .atomic)
+
+        XCTAssertFalse(HookInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
+        XCTAssertTrue(HookInstaller.hasManagedArtifacts(fileManager: .default, homeDirectory: sandbox.root))
     }
 
     func testIsInstalledRequiresBothScriptsAndRegisteredHooks() throws {

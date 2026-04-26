@@ -30,6 +30,12 @@ private struct RecentInteractiveState {
     let recordedAt: Date
 }
 
+private struct CodexRolloutCompletionState {
+    let isSubagent: Bool
+    let hasMatchingTaskComplete: Bool
+    let message: String?
+}
+
 @MainActor
 final class HookServer: ObservableObject {
     @Published var errorMessage: String?
@@ -53,6 +59,11 @@ final class HookServer: ObservableObject {
     private nonisolated static let inputRegex = try! NSRegularExpression(
         pattern: #"(?i)\b(?:waiting for|awaiting|needs?|requires?)\s+(?:your\s+)?input\b|\binput required\b"#
     )
+    private nonisolated static let claudeMetadataPromptMarkers = [
+        "generate metadata for a coding agent based on the user prompt.",
+        "title: short descriptive label",
+        "return json only with a single field 'title'.",
+    ]
 
     func start(telegram: TelegramBot) {
         self.telegramBot = telegram
@@ -251,7 +262,7 @@ final class HookServer: ObservableObject {
             handleStop(json: json)
             sendResponse(conn: conn, status: 200, body: "{}")
         case "/hook/codex-notify":
-            handleCodexNotification(json: json)
+            await handleCodexNotification(json: json)
             sendResponse(conn: conn, status: 200, body: "{}")
         case "/hook/codex-permission-request":
             handleCodexPermissionRequest(json: json)
@@ -315,6 +326,10 @@ final class HookServer: ObservableObject {
     func shouldSuppressCompletion(for delivery: NotificationDelivery, now: Date = Date()) -> Bool {
         pruneInteractiveStates(now: now)
         guard delivery.kind == .completion else { return false }
+        if delivery.source == Constants.sourceCodex,
+           delivery.eventType == Constants.codexEventTurnComplete {
+            return false
+        }
         let key = interactiveStateKey(for: delivery)
         guard let recent = recentInteractiveStates[key] else { return false }
         return now.timeIntervalSince(recent.recordedAt) < completionSuppressionInterval
@@ -348,9 +363,16 @@ final class HookServer: ObservableObject {
         process(delivery: delivery)
     }
 
-    private func handleCodexNotification(json: [String: Any]) {
+    private func handleCodexNotification(json: [String: Any]) async {
         let eventType = stringValue(in: json, key: "type")
-        guard let delivery = makeCodexDelivery(json: json) else {
+        let delivery: NotificationDelivery?
+        if eventType == Constants.codexEventTurnComplete {
+            delivery = await makeCodexCompletionDelivery(json: json)
+        } else {
+            delivery = makeCodexDelivery(json: json)
+        }
+
+        guard let delivery else {
             log.notice("event=hook_ignored source=Codex type=\(eventType)")
             return
         }
@@ -430,6 +452,57 @@ final class HookServer: ObservableObject {
         )
     }
 
+    func makeCodexCompletionDelivery(
+        json: [String: Any],
+        codexHome: URL? = nil,
+        fileManager: FileManager = .default,
+        pollInterval: Duration = .milliseconds(150),
+        maxAttempts: Int = 6
+    ) async -> NotificationDelivery? {
+        guard stringValue(in: json, key: "type") == Constants.codexEventTurnComplete else { return nil }
+
+        let cwd = stringValue(in: json, key: "cwd")
+        let project = projectName(from: cwd, fallback: Constants.sourceCodex)
+        let scopeKey = notificationScopeKey(cwd: cwd, json: json, fallback: project)
+
+        guard let threadID = codexThreadID(from: json),
+              let turnID = codexTurnID(from: json)
+        else {
+            log.notice("event=hook_ignored source=Codex type=\(Constants.codexEventTurnComplete) reason=missing_identity")
+            return nil
+        }
+
+        let home = codexHome ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
+        let attempts = max(1, maxAttempts)
+
+        for attempt in 1...attempts {
+            if let rolloutURL = codexRolloutURL(threadID: threadID, codexHome: home, fileManager: fileManager),
+               let completionState = codexRolloutCompletionState(at: rolloutURL, turnID: turnID) {
+                if completionState.isSubagent {
+                    return nil
+                }
+
+                if completionState.hasMatchingTaskComplete {
+                    return NotificationDelivery(
+                        kind: .completion,
+                        source: Constants.sourceCodex,
+                        project: project,
+                        scopeKey: scopeKey,
+                        message: completionState.message ?? codexCompletionFallbackMessage(from: json),
+                        eventType: Constants.codexEventTurnComplete,
+                        throttleKey: nil
+                    )
+                }
+            }
+
+            if attempt < attempts {
+                try? await Task.sleep(for: pollInterval)
+            }
+        }
+
+        return nil
+    }
+
     func makeCodexPermissionRequestDelivery(json: [String: Any]) -> NotificationDelivery? {
         guard stringValue(in: json, key: "hook_event_name") == "PermissionRequest" else { return nil }
 
@@ -451,7 +524,16 @@ final class HookServer: ObservableObject {
         )
     }
 
-    func makeStopDelivery(json: [String: Any]) -> NotificationDelivery? {
+    func makeStopDelivery(
+        json: [String: Any],
+        claudeHome: URL? = nil,
+        fileManager: FileManager = .default
+    ) -> NotificationDelivery? {
+        if isClaudeMetadataStop(json: json, claudeHome: claudeHome, fileManager: fileManager) {
+            log.notice("event=hook_ignored source=Claude type=stop reason=metadata_session")
+            return nil
+        }
+
         let cwd = stringValue(in: json, key: "cwd")
         let rawMessage = stringValue(in: json, key: "last_assistant_message").isEmpty
             ? stringValue(in: json, key: "lastMessage")
@@ -535,8 +617,6 @@ final class HookServer: ObservableObject {
 
     private func codexNotificationKind(for eventType: String) -> MessageFormatter.NotificationKind? {
         switch eventType {
-        case Constants.codexEventTurnComplete:
-            return .completion
         case Constants.codexEventApproval:
             return .approval
         case Constants.codexEventInput:
@@ -547,15 +627,24 @@ final class HookServer: ObservableObject {
     }
 
     private func codexBody(from json: [String: Any], kind: MessageFormatter.NotificationKind) -> String {
-        let lastMessage = stringValue(in: json, key: "last-assistant-message")
-        if !lastMessage.isEmpty {
-            return MessageFormatter.prepareCodexDetail(lastMessage)
+        if let detail = preparedCodexMessage(
+            from: json,
+            keys: [
+                "last-assistant-message",
+                "last_assistant_message",
+                "lastAssistantMessage",
+                "last-agent-message",
+                "last_agent_message",
+                "lastAgentMessage",
+            ]
+        ) {
+            return detail
         }
 
         if let messages = json["input-messages"] as? [String] {
             let joined = messages.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !joined.isEmpty {
-                return MessageFormatter.prepareCodexDetail(joined)
+            if let detail = nonEmptyMessage(MessageFormatter.prepareCodexDetail(joined)) {
+                return detail
             }
         }
 
@@ -636,6 +725,249 @@ final class HookServer: ObservableObject {
             uniqueComponents.append(component)
         }
         return uniqueComponents
+    }
+
+    private func codexThreadID(from json: [String: Any]) -> String? {
+        identityValue(
+            in: json,
+            directKeys: [
+                "thread-id",
+                "thread_id",
+                "threadId",
+                "session_id",
+                "session-id",
+                "sessionId",
+                "conversation_id",
+                "conversation-id",
+                "conversationId",
+            ],
+            nestedKeys: ["thread", "session", "conversation"]
+        )
+    }
+
+    private func claudeSessionID(from json: [String: Any]) -> String? {
+        identityValue(
+            in: json,
+            directKeys: ["session_id", "session-id", "sessionId"],
+            nestedKeys: ["session"]
+        )
+    }
+
+    private func codexTurnID(from json: [String: Any]) -> String? {
+        identityValue(
+            in: json,
+            directKeys: ["turn-id", "turn_id", "turnId"],
+            nestedKeys: ["turn"]
+        )
+    }
+
+    private func identityValue(in json: [String: Any], directKeys: [String], nestedKeys: [String]) -> String? {
+        for key in directKeys {
+            if let value = nonEmptyMessage(stringValue(in: json, key: key)) {
+                return value
+            }
+        }
+
+        for containerKey in nestedKeys {
+            guard let container = json[containerKey] as? [String: Any],
+                  let value = nonEmptyMessage(stringValue(in: container, key: "id"))
+            else { continue }
+            return value
+        }
+
+        return nil
+    }
+
+    private func preparedCodexMessage(from json: [String: Any], keys: [String]) -> String? {
+        for key in keys {
+            let raw = stringValue(in: json, key: key)
+            guard !raw.isEmpty else { continue }
+            let prepared = MessageFormatter.prepareCodexDetail(raw)
+            if let message = nonEmptyMessage(prepared) {
+                return message
+            }
+        }
+        return nil
+    }
+
+    private func codexCompletionFallbackMessage(from json: [String: Any]) -> String {
+        preparedCodexMessage(
+            from: json,
+            keys: [
+                "last-assistant-message",
+                "last_assistant_message",
+                "lastAssistantMessage",
+                "last-agent-message",
+                "last_agent_message",
+                "lastAgentMessage",
+            ]
+        ) ?? "Codex 任务已完成"
+    }
+
+    private func isClaudeMetadataStop(
+        json: [String: Any],
+        claudeHome: URL?,
+        fileManager: FileManager
+    ) -> Bool {
+        guard let sessionID = claudeSessionID(from: json) else { return false }
+
+        let home = claudeHome ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".claude", isDirectory: true)
+        guard let transcriptURL = claudeTranscriptURL(sessionID: sessionID, claudeHome: home, fileManager: fileManager) else {
+            return false
+        }
+
+        return claudeTranscriptContainsMetadataPrompt(at: transcriptURL)
+    }
+
+    private func codexRolloutURL(threadID: String, codexHome: URL, fileManager: FileManager) -> URL? {
+        let sessionsDirectory = codexHome.appendingPathComponent("sessions", isDirectory: true)
+        guard let enumerator = fileManager.enumerator(
+            at: sessionsDirectory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        let expectedSuffix = "-\(threadID).jsonl"
+        for case let fileURL as URL in enumerator {
+            guard fileURL.lastPathComponent.hasSuffix(expectedSuffix) else { continue }
+            return fileURL
+        }
+
+        return nil
+    }
+
+    private func claudeTranscriptURL(sessionID: String, claudeHome: URL, fileManager: FileManager) -> URL? {
+        let projectsDirectory = claudeHome.appendingPathComponent("projects", isDirectory: true)
+        guard let enumerator = fileManager.enumerator(
+            at: projectsDirectory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        let expectedName = "\(sessionID).jsonl"
+        for case let fileURL as URL in enumerator {
+            guard fileURL.lastPathComponent == expectedName else { continue }
+            return fileURL
+        }
+
+        return nil
+    }
+
+    private func codexRolloutCompletionState(at rolloutURL: URL, turnID: String) -> CodexRolloutCompletionState? {
+        guard let contents = try? String(contentsOf: rolloutURL, encoding: .utf8) else {
+            return nil
+        }
+
+        var isSubagent = false
+        var hasMatchingTaskComplete = false
+        var message: String?
+
+        for line in contents.split(whereSeparator: \.isNewline) {
+            guard let data = String(line).data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let type = json["type"] as? String
+            else { continue }
+
+            if type == "session_meta" {
+                isSubagent = isSubagentCodexRollout(json: json)
+                if isSubagent {
+                    return CodexRolloutCompletionState(
+                        isSubagent: true,
+                        hasMatchingTaskComplete: false,
+                        message: nil
+                    )
+                }
+                continue
+            }
+
+            guard type == "event_msg",
+                  let payload = json["payload"] as? [String: Any],
+                  stringValue(in: payload, key: "type") == "task_complete",
+                  stringValue(in: payload, key: "turn_id") == turnID
+            else { continue }
+
+            hasMatchingTaskComplete = true
+            if let detail = preparedCodexMessage(
+                from: payload,
+                keys: ["last_agent_message", "last-agent-message", "lastAgentMessage"]
+            ) {
+                message = detail
+            }
+        }
+
+        return CodexRolloutCompletionState(
+            isSubagent: isSubagent,
+            hasMatchingTaskComplete: hasMatchingTaskComplete,
+            message: message
+        )
+    }
+
+    private func claudeTranscriptContainsMetadataPrompt(at transcriptURL: URL) -> Bool {
+        guard let contents = try? String(contentsOf: transcriptURL, encoding: .utf8) else {
+            return false
+        }
+
+        for line in contents.split(whereSeparator: \.isNewline) {
+            guard let data = String(line).data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let prompt = claudePromptText(from: json)
+            else { continue }
+
+            if isClaudeMetadataPrompt(prompt) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func isSubagentCodexRollout(json: [String: Any]) -> Bool {
+        guard let payload = json["payload"] as? [String: Any],
+              let source = payload["source"] as? [String: Any],
+              let subagent = source["subagent"] as? [String: Any],
+              let threadSpawn = subagent["thread_spawn"] as? [String: Any]
+        else {
+            return false
+        }
+
+        return nonEmptyMessage(stringValue(in: threadSpawn, key: "parent_thread_id")) != nil
+    }
+
+    private func claudePromptText(from json: [String: Any]) -> String? {
+        let type = stringValue(in: json, key: "type")
+        if type == "last-prompt" {
+            return nonEmptyMessage(stringValue(in: json, key: "lastPrompt"))
+        }
+
+        guard type == "user",
+              let message = json["message"] as? [String: Any],
+              stringValue(in: message, key: "role") == "user",
+              let content = message["content"] as? [[String: Any]]
+        else {
+            return nil
+        }
+
+        let text = content.compactMap { item -> String? in
+            guard stringValue(in: item, key: "type") == "text" else { return nil }
+            return nonEmptyMessage(stringValue(in: item, key: "text"))
+        }.joined(separator: "\n")
+
+        return nonEmptyMessage(text)
+    }
+
+    private func isClaudeMetadataPrompt(_ prompt: String) -> Bool {
+        let normalized = normalizedPromptText(prompt)
+        return Self.claudeMetadataPromptMarkers.allSatisfy { normalized.contains($0) }
+    }
+
+    private func normalizedPromptText(_ text: String) -> String {
+        let trimmed = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+        return Self.whitespaceRegex.stringByReplacingMatches(in: trimmed, range: range, withTemplate: " ")
     }
 
     private func pruneInteractiveStates(now: Date) {

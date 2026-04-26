@@ -33,7 +33,7 @@ final class MessageFormatterTests: XCTestCase {
     func testNotificationTitleByKind() {
         XCTAssertEqual(
             MessageFormatter.notificationTitle(kind: .completion, source: "Codex", project: "demo"),
-            "✅ [Codex] [demo] 本轮完成"
+            "✅ [Codex] [demo] 已完成"
         )
         XCTAssertEqual(
             MessageFormatter.notificationTitle(kind: .completion, source: "Claude", project: "demo"),
@@ -63,5 +63,12 @@ final class MessageFormatterTests: XCTestCase {
 
         XCTAssertTrue(result.contains("建议：Continue thread on run.sh 变慢排查"))
         XCTAssertFalse(result.contains(#""suggestions""#))
+    }
+
+    func testPrepareCodexDetailDropsUnreadableStructuredPayload() {
+        let json = #"{"exclude":[]}"#
+        let result = MessageFormatter.prepareCodexDetail(json)
+
+        XCTAssertEqual(result, "")
     }
 }
