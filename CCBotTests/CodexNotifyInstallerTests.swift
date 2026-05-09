@@ -256,10 +256,11 @@ final class CodexNotifyInstallerTests: XCTestCase {
         let text = String(decoding: result, as: UTF8.self)
 
         XCTAssertTrue(text.contains("[features]"))
-        XCTAssertTrue(text.contains("codex_hooks = true"))
+        XCTAssertTrue(text.contains("hooks = true"))
+        XCTAssertFalse(text.contains("codex_hooks = true"))
     }
 
-    func testMergeHooksFeatureUpdatesExistingFlagToTrue() throws {
+    func testMergeHooksFeatureUpdatesExistingLegacyFlagToTrue() throws {
         let result = try CodexNotifyInstaller.mergeHooksFeature(into: """
         [features]
         codex_hooks = false
@@ -267,7 +268,19 @@ final class CodexNotifyInstallerTests: XCTestCase {
         let text = String(decoding: result, as: UTF8.self)
 
         XCTAssertFalse(text.contains("codex_hooks = false"))
-        XCTAssertTrue(text.contains("codex_hooks = true"))
+        XCTAssertFalse(text.contains("codex_hooks = true"))
+        XCTAssertTrue(text.contains("hooks = true"))
+    }
+
+    func testMergeHooksFeatureUpdatesExistingHooksFlagToTrue() throws {
+        let result = try CodexNotifyInstaller.mergeHooksFeature(into: """
+        [features]
+        hooks = false
+        """.data(using: .utf8)!)
+        let text = String(decoding: result, as: UTF8.self)
+
+        XCTAssertFalse(text.contains("hooks = false"))
+        XCTAssertTrue(text.contains("hooks = true"))
     }
 
     func testInstallRollsBackArtifactsWhenHooksJSONIsInvalid() throws {
@@ -303,7 +316,8 @@ final class CodexNotifyInstallerTests: XCTestCase {
         XCTAssertTrue(configText.contains("SkyComputerUseClient"), configText)
         XCTAssertTrue(configText.contains("--previous-notify"), configText)
         XCTAssertTrue(configText.contains("cc-bot-notify.sh"), configText)
-        XCTAssertTrue(configText.contains("codex_hooks = true # ccbot"), configText)
+        XCTAssertTrue(configText.contains("hooks = true # ccbot"), configText)
+        XCTAssertFalse(configText.contains("codex_hooks = true # ccbot"), configText)
         XCTAssertTrue(CodexNotifyInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
     }
 
@@ -319,7 +333,8 @@ final class CodexNotifyInstallerTests: XCTestCase {
         XCTAssertTrue(configText.contains("SkyComputerUseClient"), configText)
         XCTAssertTrue(configText.contains("--previous-notify"), configText)
         XCTAssertTrue(configText.contains("cc-bot-notify.sh"), configText)
-        XCTAssertTrue(configText.contains("codex_hooks = true # ccbot"), configText)
+        XCTAssertTrue(configText.contains("hooks = true # ccbot"), configText)
+        XCTAssertFalse(configText.contains("codex_hooks = true # ccbot"), configText)
         XCTAssertFalse(configText.contains(#"\/"#), configText)
         XCTAssertTrue(CodexNotifyInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
     }
@@ -376,6 +391,7 @@ final class CodexNotifyInstallerTests: XCTestCase {
         XCTAssertTrue(configText.contains("SkyComputerUseClient"), configText)
         XCTAssertFalse(configText.contains("--previous-notify"), configText)
         XCTAssertFalse(configText.contains("cc-bot-notify.sh"), configText)
+        XCTAssertFalse(configText.contains("hooks = true # ccbot"), configText)
         XCTAssertFalse(configText.contains("codex_hooks = true # ccbot"), configText)
         XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.notifyScriptPath.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: sandbox.permissionScriptPath.path))
@@ -449,6 +465,7 @@ final class CodexNotifyInstallerTests: XCTestCase {
         let configText = try String(contentsOf: sandbox.configPath, encoding: .utf8)
         XCTAssertTrue(configText.contains(#"model = "gpt-5.4""#))
         XCTAssertFalse(configText.contains("cc-bot-notify.sh"))
+        XCTAssertFalse(configText.contains("hooks = true # ccbot"))
         XCTAssertFalse(configText.contains("codex_hooks = true # ccbot"))
 
         let hooksText = try String(contentsOf: sandbox.hooksPath, encoding: .utf8)
@@ -516,6 +533,28 @@ final class CodexNotifyInstallerTests: XCTestCase {
         XCTAssertEqual(entries[0]["matcher"] as? String, ".*")
         let hook = try XCTUnwrap((entries[0]["hooks"] as? [[String: Any]])?.first)
         XCTAssertEqual(hook["statusMessage"] as? String, "Sending approval notification")
+    }
+
+    func testUpdateScriptIfInstalledMigratesLegacyManagedFeatureKey() throws {
+        let sandbox = try makeSandbox()
+        defer { try? FileManager.default.removeItem(at: sandbox.root) }
+
+        try writeScript("notify-original", to: sandbox.notifyScriptPath)
+        try writeScript("permission-original", to: sandbox.permissionScriptPath)
+
+        let legacyConfig = try String(decoding: installedConfigData(for: sandbox.root), as: UTF8.self)
+            .replacingOccurrences(of: "hooks = true # ccbot", with: "codex_hooks = true # ccbot")
+        try legacyConfig.write(to: sandbox.configPath, atomically: true, encoding: .utf8)
+        try CodexNotifyInstaller
+            .mergePermissionRequestHook(into: Data("{}".utf8))
+            .write(to: sandbox.hooksPath, options: .atomic)
+
+        try CodexNotifyInstaller.updateScriptIfInstalled(fileManager: .default, homeDirectory: sandbox.root)
+
+        let configText = try String(contentsOf: sandbox.configPath, encoding: .utf8)
+        XCTAssertTrue(configText.contains("hooks = true # ccbot"), configText)
+        XCTAssertFalse(configText.contains("codex_hooks = true # ccbot"), configText)
+        XCTAssertTrue(CodexNotifyInstaller.isInstalled(fileManager: .default, homeDirectory: sandbox.root))
     }
 
     func testHasManagedArtifactsDetectsPartialInstall() throws {

@@ -68,7 +68,7 @@ CC GUI 插件 ──文件监听──▶ CCGUIWatcher ──▶ 系统通知 / 
 - 写入脚本到 `~/.codex/hooks/cc-bot-notify.sh`
 - 写入脚本到 `~/.codex/hooks/cc-bot-permission-request.sh`
 - 将 `notify = ["bash", ".../cc-bot-notify.sh"]` 写入 `~/.codex/config.toml`
-- 在 `~/.codex/config.toml` 的 `[features]` 中写入 `codex_hooks = true`
+- 在 `~/.codex/config.toml` 的 `[features]` 中写入 `hooks = true`
 - 在 `~/.codex/hooks.json` 中注册 `PermissionRequest` hook，用于推送审批通知
 
 ### Telegram Bot
