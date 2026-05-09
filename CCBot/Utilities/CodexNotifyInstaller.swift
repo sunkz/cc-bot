@@ -31,7 +31,8 @@ struct CodexNotifyInstaller {
         )
     }
 
-    private static let managedHooksFeatureLine = "codex_hooks = true # ccbot"
+    private static let managedHooksFeatureLine = "hooks = true # ccbot"
+    private static let legacyManagedHooksFeatureLine = "codex_hooks = true # ccbot"
 
     private enum ManagedNotifyOwnership {
         case none
@@ -223,7 +224,7 @@ struct CodexNotifyInstaller {
                 let line = String(configContents[$0])
                 return managedNotifyOwnership(of: line, paths: paths) != .none
             } ?? false
-            if ownsManagedNotify || configContents.contains(managedHooksFeatureLine) {
+            if ownsManagedNotify || hasManagedHooksFeature(in: configContents) {
                 return true
             }
         }
@@ -361,7 +362,7 @@ struct CodexNotifyInstaller {
         if let start = featuresSectionStart(in: lines) {
             let end = nextSectionStart(in: lines, after: start) ?? lines.count
             if let featureLineIndex = (start + 1..<end).first(where: { index in
-                lines[index].trimmingCharacters(in: .whitespaces).hasPrefix("codex_hooks")
+                isHooksFeatureLine(lines[index])
             }) {
                 lines[featureLineIndex] = managedHooksFeatureLine
             } else {
@@ -391,13 +392,17 @@ struct CodexNotifyInstaller {
         guard let start = featuresSectionStart(in: lines) else { return data }
         let end = nextSectionStart(in: lines, after: start) ?? lines.count
 
-        guard let featureLineIndex = (start + 1..<end).first(where: { index in
-            lines[index].trimmingCharacters(in: .whitespaces) == managedHooksFeatureLine
-        }) else {
+        let featureLineIndices = (start + 1..<end).filter { index in
+            isManagedHooksFeatureLine(lines[index])
+        }
+
+        guard !featureLineIndices.isEmpty else {
             return data
         }
 
-        lines.remove(at: featureLineIndex)
+        for index in featureLineIndices.reversed() {
+            lines.remove(at: index)
+        }
 
         let refreshedEnd = nextSectionStart(in: lines, after: start) ?? lines.count
         let hasMeaningfulFeatureLines = (start + 1..<refreshedEnd).contains { index in
@@ -487,7 +492,21 @@ struct CodexNotifyInstaller {
     }
 
     private static func hasEnabledHooksFeature(in config: String) -> Bool {
-        config.range(of: #"(?m)^\s*codex_hooks\s*=\s*true\b.*$"#, options: .regularExpression) != nil
+        config.range(of: #"(?m)^\s*(?:hooks|codex_hooks)\s*=\s*true\b.*$"#, options: .regularExpression) != nil
+    }
+
+    private static func hasManagedHooksFeature(in config: String) -> Bool {
+        config.components(separatedBy: .newlines).contains(where: isManagedHooksFeatureLine)
+    }
+
+    private static func isManagedHooksFeatureLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed == managedHooksFeatureLine || trimmed == legacyManagedHooksFeatureLine
+    }
+
+    private static func isHooksFeatureLine(_ line: String) -> Bool {
+        line.trimmingCharacters(in: .whitespaces)
+            .range(of: #"^(?:hooks|codex_hooks)\s*="#, options: .regularExpression) != nil
     }
 
     private static func hasPermissionRequestHook(in data: Data) -> Bool {
