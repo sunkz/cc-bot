@@ -361,10 +361,14 @@ struct CodexNotifyInstaller {
 
         if let start = featuresSectionStart(in: lines) {
             let end = nextSectionStart(in: lines, after: start) ?? lines.count
-            if let featureLineIndex = (start + 1..<end).first(where: { index in
+            let featureLineIndices = (start + 1..<end).filter { index in
                 isHooksFeatureLine(lines[index])
-            }) {
+            }
+            if let featureLineIndex = featureLineIndices.first {
                 lines[featureLineIndex] = managedHooksFeatureLine
+                for index in featureLineIndices.dropFirst().reversed() {
+                    lines.remove(at: index)
+                }
             } else {
                 lines.insert(managedHooksFeatureLine, at: start + 1)
             }

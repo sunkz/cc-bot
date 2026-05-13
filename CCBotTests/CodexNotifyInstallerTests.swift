@@ -283,6 +283,21 @@ final class CodexNotifyInstallerTests: XCTestCase {
         XCTAssertTrue(text.contains("hooks = true"))
     }
 
+    func testMergeHooksFeatureRemovesDuplicateLegacyAssignments() throws {
+        let result = try CodexNotifyInstaller.mergeHooksFeature(into: """
+        [features]
+        hooks = false
+        codex_hooks = true # ccbot
+        memories = true
+        """.data(using: .utf8)!)
+        let text = String(decoding: result, as: UTF8.self)
+
+        XCTAssertEqual(text.components(separatedBy: "\n").filter { $0.contains("hooks = true # ccbot") }.count, 1)
+        XCTAssertFalse(text.contains("codex_hooks = true # ccbot"))
+        XCTAssertFalse(text.contains("hooks = false"))
+        XCTAssertTrue(text.contains("memories = true"))
+    }
+
     func testInstallRollsBackArtifactsWhenHooksJSONIsInvalid() throws {
         let sandbox = try makeSandbox()
         defer { try? FileManager.default.removeItem(at: sandbox.root) }
