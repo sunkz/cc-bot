@@ -23,6 +23,7 @@ final class AppState: ObservableObject {
         _ = Constants.ensureAuthToken()
 
         SystemNotifier.shared.requestPermission()
+        SystemNotifier.shared.setup()
 
         do { try HookInstaller.updateScriptsIfInstalled() }
         catch { log.error("Hook scripts update failed: \(error)") }
@@ -38,5 +39,10 @@ final class AppState: ObservableObject {
         if UserDefaults.standard.object(forKey: "ccguiWatcherEnabled") as? Bool ?? true {
             ccguiWatcher.start(telegram: telegramBot)
         }
+    }
+
+    func stop() {
+        hookServer.stop()
+        ccguiWatcher.stop()
     }
 }

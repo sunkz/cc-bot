@@ -6,10 +6,16 @@ import UserNotifications
 final class SystemNotifier {
     static let shared = SystemNotifier()
 
+    private let delegateHandler = NotificationDelegateHandler()
+
     private init() {}
 
     nonisolated func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    func setup() {
+        UNUserNotificationCenter.current().delegate = delegateHandler
     }
 
     func notify(title: String, body: String) {
@@ -24,5 +30,14 @@ final class SystemNotifier {
             trigger: nil
         )
         UNUserNotificationCenter.current().add(request)
+    }
+}
+
+private final class NotificationDelegateHandler: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
     }
 }

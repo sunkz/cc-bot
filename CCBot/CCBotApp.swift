@@ -6,10 +6,16 @@ struct CCBotApp: App {
     @StateObject private var appState = AppState.shared
 
     init() {
-        // Start services immediately on launch, not when menu is opened
         if !RuntimeEnvironment.isRunningTests() {
             DispatchQueue.main.async {
                 AppState.shared.start()
+            }
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.willTerminateNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                AppState.shared.stop()
             }
         }
     }

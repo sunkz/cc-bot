@@ -73,6 +73,7 @@ final class HookServer: ObservableObject {
     private func startListener() {
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
+        params.acceptLocalOnly = true
 
         guard let listener = try? NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!) else {
             errorMessage = "Port \(port) 被占用"
@@ -971,13 +972,7 @@ final class HookServer: ObservableObject {
     }
 
     private func pruneInteractiveStates(now: Date) {
-        if recentInteractiveStates.count > 100 {
-            recentInteractiveStates = recentInteractiveStates.filter {
-                now.timeIntervalSince($0.value.recordedAt) < completionSuppressionInterval
-            }
-            return
-        }
-
+        guard recentInteractiveStates.count > 100 else { return }
         recentInteractiveStates = recentInteractiveStates.filter {
             now.timeIntervalSince($0.value.recordedAt) < completionSuppressionInterval
         }
