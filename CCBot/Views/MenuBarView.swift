@@ -1,4 +1,5 @@
 // CCBot/Views/MenuBarView.swift
+import ServiceManagement
 import SwiftUI
 
 struct MenuBarView: View {
@@ -18,6 +19,7 @@ struct MenuBarView: View {
     @State private var codexNotifyInstalled = CodexNotifyInstaller.isInstalled()
     @State private var codexNotifyManagedArtifacts = CodexNotifyInstaller.hasManagedArtifacts()
     @State private var hookPathDisclosureState = HookPathDisclosureState()
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var alertMessage: String?
     @State private var tokenPersistTask: Task<Void, Never>?
 
@@ -44,6 +46,13 @@ struct MenuBarView: View {
                 Text(hookServer.errorMessage ?? "监听中 :\(hookServer.port)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Toggle("开机自启", isOn: $launchAtLogin)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .onChange(of: launchAtLogin) { enabled in
+                        toggleLaunchAtLogin(enabled: enabled)
+                    }
             }
             Divider().padding(.vertical, 6)
 
@@ -59,7 +68,7 @@ struct MenuBarView: View {
             ideaSection
             Divider().padding(.vertical, 6)
 
-            // 版本 & 获取更新 & 退出
+            // 开机自启 & 退出
             HStack(alignment: .center, spacing: 8) {
                 footerActionButton(
                     title: Constants.projectHomepageLinkTitle,
@@ -69,14 +78,20 @@ struct MenuBarView: View {
                     action: openProjectHomepage
                 )
                 if updateChecker.hasUpdate, let latest = updateChecker.latestVersion {
-                    HStack(spacing: 3) {
-                        Text("v\(updateChecker.currentVersion)")
-                            .strikethrough()
-                            .foregroundStyle(.tertiary)
-                        Text("v\(latest)")
-                            .foregroundColor(.orange)
+                    Button {
+                        NSWorkspace.shared.open(Constants.projectReleasesURL)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("v\(updateChecker.currentVersion)")
+                                .strikethrough()
+                                .foregroundStyle(.tertiary)
+                            Text("v\(latest)")
+                                .foregroundColor(.orange)
+                        }
+                        .font(.caption)
                     }
-                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .help("点击下载最新版本")
                 } else {
                     Text("v\(updateChecker.currentVersion)")
                         .font(.caption)
@@ -211,6 +226,19 @@ struct MenuBarView: View {
     }
 
     // MARK: - Actions
+
+    private func toggleLaunchAtLogin(enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            alertMessage = "设置开机自启失败: \(error.localizedDescription)"
+        }
+    }
 
     private func toggleCCGUIWatcher(enabled: Bool) {
         if enabled {

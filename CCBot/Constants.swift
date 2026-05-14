@@ -7,6 +7,7 @@ enum Constants {
     static let projectHomepageIconAssetName = "GitHubMark"
     static let projectHomepageLinkTitle = "主页"
     static let projectHomepageURL = URL(string: "https://github.com/sunkz/cc-bot")!
+    static let projectReleasesURL = URL(string: "https://github.com/sunkz/cc-bot/releases/latest")!
 
     // MARK: - Notification source names
     static let sourceClaude = "Claude"
