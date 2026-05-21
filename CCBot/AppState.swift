@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
     let hookServer = HookServer()
     let telegramBot = TelegramBot()
     let ccguiWatcher = CCGUIWatcher()
+    let paseoWatcher = PaseoWatcher()
     let updateChecker = UpdateChecker()
 
     private var started = false
@@ -39,10 +40,15 @@ final class AppState: ObservableObject {
         if UserDefaults.standard.object(forKey: "ccguiWatcherEnabled") as? Bool ?? true {
             ccguiWatcher.start(telegram: telegramBot)
         }
+
+        if UserDefaults.standard.object(forKey: "paseoWatcherEnabled") as? Bool ?? true {
+            paseoWatcher.start(telegram: telegramBot)
+        }
     }
 
     func stop() {
         hookServer.stop()
         ccguiWatcher.stop()
+        paseoWatcher.stop()
     }
 }

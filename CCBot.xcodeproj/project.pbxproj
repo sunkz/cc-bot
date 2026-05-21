@@ -26,6 +26,7 @@
 		C19CA5ED1F80A6929F4FD442 /* NotificationPreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BA3A95E4029E5CB0E8094E0 /* NotificationPreferencesTests.swift */; };
 		C5C6967249783C99B34779B3 /* MessageFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 194FFBF39B0E1090938A1276 /* MessageFormatterTests.swift */; };
 		C5E4649F8F1EA8CC8348962D /* CCGUIWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB542F27C2BC4323F42EF32E /* CCGUIWatcher.swift */; };
+		C31E4B7865141AAB4BAA4858 /* PaseoWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7A2E9F3B8C14D5E6F0A1B2C /* PaseoWatcher.swift */; };
 		D01A76690ADFE61FDEA115E7 /* CodexNotifyInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 311CBAC2C072FDA70C29F999 /* CodexNotifyInstallerTests.swift */; };
 		D58F0BF0491693B6688F99A7 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCF32A158EB479B567D56BA8 /* UpdateChecker.swift */; };
 		DE49F368ABC0A766A5354190 /* HookServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89789840ABD02BD8EB5EEA0 /* HookServerTests.swift */; };
@@ -64,6 +65,7 @@
 		8C98B7F83314AFD03BE0F647 /* CCBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCBotApp.swift; sourceTree = "<group>"; };
 		AB2A78A71A901104A051FB84 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		AB542F27C2BC4323F42EF32E /* CCGUIWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCGUIWatcher.swift; sourceTree = "<group>"; };
+		D7A2E9F3B8C14D5E6F0A1B2C /* PaseoWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaseoWatcher.swift; sourceTree = "<group>"; };
 		AD356A59EC4E0670EC110289 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B89789840ABD02BD8EB5EEA0 /* HookServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookServerTests.swift; sourceTree = "<group>"; };
 		C28D30BCD6466138CADCC3CE /* NotificationPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferences.swift; sourceTree = "<group>"; };
@@ -132,6 +134,7 @@
 			children = (
 				AB542F27C2BC4323F42EF32E /* CCGUIWatcher.swift */,
 				700209C23AABF3CA3E6257A9 /* HookServer.swift */,
+				D7A2E9F3B8C14D5E6F0A1B2C /* PaseoWatcher.swift */,
 				C8E25B4511CE8B72819DDE0D /* SystemNotifier.swift */,
 				68AA225AC4728D71C5A6EF4C /* TelegramBot.swift */,
 				CCF32A158EB479B567D56BA8 /* UpdateChecker.swift */,
@@ -260,6 +263,7 @@
 				F716F326490FF7B2E6A2E1EE /* MenuBarView.swift in Sources */,
 				80C62E2191180D1D24976F69 /* MessageFormatter.swift in Sources */,
 				A394B91DE50B1989803094C8 /* NotificationPreferences.swift in Sources */,
+				C31E4B7865141AAB4BAA4858 /* PaseoWatcher.swift in Sources */,
 				05C7817C1BA6837AA094DB0F /* StringUtils.swift in Sources */,
 				565A6699E9A791277BB49991 /* SystemNotifier.swift in Sources */,
 				97E0F704EA9F85645F652B4A /* TelegramBot.swift in Sources */,

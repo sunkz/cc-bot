@@ -26,6 +26,7 @@ struct CCBotApp: App {
                 hookServer: appState.hookServer,
                 telegramBot: appState.telegramBot,
                 ccguiWatcher: appState.ccguiWatcher,
+                paseoWatcher: appState.paseoWatcher,
                 updateChecker: appState.updateChecker
             )
         } label: {

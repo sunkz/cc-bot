@@ -12,6 +12,10 @@ enum Constants {
     // MARK: - Notification source names
     static let sourceClaude = "Claude"
     static let sourceCodex = "Codex"
+    static let sourcePaseo = "Paseo"
+
+    // MARK: - Paseo
+    static let paseoWSPort: UInt16 = 6767
 
     // MARK: - Codex event types
     static let codexEventTurnComplete = "agent-turn-complete"

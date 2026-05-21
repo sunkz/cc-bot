@@ -810,6 +810,10 @@ final class HookServer: ObservableObject {
         claudeHome: URL?,
         fileManager: FileManager
     ) -> Bool {
+        if isTitleGenerationOutput(json: json) {
+            return true
+        }
+
         guard let sessionID = claudeSessionID(from: json) else { return false }
 
         let home = claudeHome ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".claude", isDirectory: true)
@@ -818,6 +822,20 @@ final class HookServer: ObservableObject {
         }
 
         return claudeTranscriptContainsMetadataPrompt(at: transcriptURL)
+    }
+
+    private func isTitleGenerationOutput(json: [String: Any]) -> Bool {
+        let raw = stringValue(in: json, key: "last_assistant_message").isEmpty
+            ? stringValue(in: json, key: "lastMessage")
+            : stringValue(in: json, key: "last_assistant_message")
+        guard !raw.isEmpty else { return false }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              parsed.count == 1,
+              parsed["title"] is String
+        else { return false }
+        return true
     }
 
     private func codexRolloutURL(threadID: String, codexHome: URL, fileManager: FileManager) -> URL? {

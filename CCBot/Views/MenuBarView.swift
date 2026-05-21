@@ -6,12 +6,14 @@ struct MenuBarView: View {
     @ObservedObject var hookServer: HookServer
     @ObservedObject var telegramBot: TelegramBot
     @ObservedObject var ccguiWatcher: CCGUIWatcher
+    @ObservedObject var paseoWatcher: PaseoWatcher
     @ObservedObject var updateChecker: UpdateChecker
 
     @AppStorage("telegramChatId") private var chatId = ""
     @AppStorage("systemNotifyEnabled") private var systemNotifyEnabled = true
     @AppStorage("telegramNotifyEnabled") private var telegramNotifyEnabled = true
     @AppStorage("ccguiWatcherEnabled") private var ccguiWatcherEnabled = true
+    @AppStorage("paseoWatcherEnabled") private var paseoWatcherEnabled = true
 
     @State private var tokenInput: String = ""
     @State private var hookInstalled = HookInstaller.isInstalled()
@@ -66,6 +68,10 @@ struct MenuBarView: View {
 
             // IDEA 集成
             ideaSection
+            Divider().padding(.vertical, 6)
+
+            // Paseo 集成
+            paseoSection
             Divider().padding(.vertical, 6)
 
             // 开机自启 & 退出
@@ -225,6 +231,28 @@ struct MenuBarView: View {
         }
     }
 
+    private var paseoSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Paseo 集成").font(.caption).foregroundStyle(.tertiary)
+
+            HStack {
+                Circle()
+                    .fill(paseoWatcher.isWatching ? .green : .gray)
+                    .frame(width: 8, height: 8)
+                Text("Paseo 监听")
+                    .font(.callout)
+                Spacer()
+                Toggle("", isOn: $paseoWatcherEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
+                    .onChange(of: paseoWatcherEnabled) { enabled in
+                        togglePaseoWatcher(enabled: enabled)
+                    }
+            }
+        }
+    }
+
     // MARK: - Actions
 
     private func toggleLaunchAtLogin(enabled: Bool) {
@@ -245,6 +273,14 @@ struct MenuBarView: View {
             ccguiWatcher.start(telegram: AppState.shared.telegramBot)
         } else {
             ccguiWatcher.stop()
+        }
+    }
+
+    private func togglePaseoWatcher(enabled: Bool) {
+        if enabled {
+            paseoWatcher.start(telegram: AppState.shared.telegramBot)
+        } else {
+            paseoWatcher.stop()
         }
     }
 
