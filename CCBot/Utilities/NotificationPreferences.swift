@@ -8,4 +8,7 @@ enum NotificationPreferences {
     static var telegramEnabled: Bool {
         UserDefaults.standard.object(forKey: "telegramNotifyEnabled") as? Bool ?? true
     }
+    static var flashEnabled: Bool {
+        UserDefaults.standard.object(forKey: "flashNotifyEnabled") as? Bool ?? false
+    }
 }

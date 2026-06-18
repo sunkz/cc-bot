@@ -12,6 +12,7 @@ struct MenuBarView: View {
     @AppStorage("telegramChatId") private var chatId = ""
     @AppStorage("systemNotifyEnabled") private var systemNotifyEnabled = true
     @AppStorage("telegramNotifyEnabled") private var telegramNotifyEnabled = true
+    @AppStorage("flashNotifyEnabled") private var flashNotifyEnabled = false
     @AppStorage("ccguiWatcherEnabled") private var ccguiWatcherEnabled = true
     @AppStorage("paseoWatcherEnabled") private var paseoWatcherEnabled = true
 
@@ -146,6 +147,15 @@ struct MenuBarView: View {
                 Text("系统通知")
                 Spacer()
                 Toggle("", isOn: $systemNotifyEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
+            }
+
+            HStack {
+                Text("强通知浮窗")
+                Spacer()
+                Toggle("", isOn: $flashNotifyEnabled)
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .labelsHidden()
