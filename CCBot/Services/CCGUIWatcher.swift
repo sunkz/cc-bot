@@ -262,12 +262,17 @@ final class CCGUIWatcher: ObservableObject {
         let kind = content.kind
         let body = content.body
 
-        guard NotificationPreferences.systemEnabled || NotificationPreferences.telegramEnabled else { return }
+        guard NotificationPreferences.systemEnabled
+            || NotificationPreferences.telegramEnabled
+            || NotificationPreferences.flashEnabled else { return }
         let source = Constants.sourceClaude
         let title = MessageFormatter.notificationTitle(kind: kind, source: source, project: req.project)
         let formattedBody = MessageFormatter.notificationBody(detail: body)
         if NotificationPreferences.systemEnabled {
             SystemNotifier.shared.notify(title: title, body: formattedBody)
+        }
+        if NotificationPreferences.flashEnabled {
+            FlashNotificationWindow.show(title: title, body: formattedBody)
         }
         if NotificationPreferences.telegramEnabled {
             Task {

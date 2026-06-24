@@ -237,13 +237,18 @@ final class PaseoWatcher: ObservableObject {
     // MARK: - Notification dispatch
 
     private func notify(kind: MessageFormatter.NotificationKind, source: String, project: String, message: String) {
-        guard NotificationPreferences.systemEnabled || NotificationPreferences.telegramEnabled else { return }
+        guard NotificationPreferences.systemEnabled
+            || NotificationPreferences.telegramEnabled
+            || NotificationPreferences.flashEnabled else { return }
 
         let title = MessageFormatter.notificationTitle(kind: kind, source: source, project: project)
         let body = MessageFormatter.notificationBody(detail: message)
 
         if NotificationPreferences.systemEnabled {
             SystemNotifier.shared.notify(title: title, body: body)
+        }
+        if NotificationPreferences.flashEnabled {
+            FlashNotificationWindow.show(title: title, body: body)
         }
         if NotificationPreferences.telegramEnabled {
             Task {

@@ -24,8 +24,8 @@ final class FlashNotificationWindow {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle, .stationary]
+        panel.level = .screenSaver
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle, .stationary, .transient]
         panel.ignoresMouseEvents = true
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false

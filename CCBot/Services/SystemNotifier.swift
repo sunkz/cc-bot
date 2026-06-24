@@ -30,10 +30,6 @@ final class SystemNotifier {
             trigger: nil
         )
         UNUserNotificationCenter.current().add(request)
-
-        if NotificationPreferences.flashEnabled {
-            FlashNotificationWindow.show(title: title, body: body)
-        }
     }
 }
 
